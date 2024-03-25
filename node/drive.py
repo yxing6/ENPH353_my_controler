@@ -16,10 +16,10 @@ class Drive:
         rospy.init_node('image_subscriber_node', anonymous=True)
 
         # Subscribe to the image topic
-        self.image_sub = rospy.Subscriber("/rrbot/camera1/image_raw", Image, self.image_callback)
+        self.image_sub = rospy.Subscriber("/R1/pi_camera/image_raw", Image, self.image_callback)
 
-        # Create a publisher for cmd_vel
-        self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
+        # Create a publisher for cmd_vel/
+        self.cmd_vel_pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=10)
 
         # Create a bridge between ROS and OpenCV
         self.bridge = CvBridge()
