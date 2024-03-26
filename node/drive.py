@@ -27,8 +27,8 @@ class Drive:
         # control parameters
         self.Kp = 0.02  # Proportional gain
         self.error_threshold = 20  # drive with different linear speed wrt this error_theshold
-        self.linear_val_max = 0.7  # drive fast when error is small
-        self.linear_val_min = 0.5  # drive slow when error is small
+        self.linear_val_max = 0.4  # drive fast when error is small
+        self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
     def image_callback(self, data):
@@ -72,6 +72,7 @@ class Drive:
         # change the frame to grey scale
         gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
+        # not using gaussianBlur for now
         # blur it so the "road" far away become less easy to detect
         # kernel_size: Gaussian kernel size
         # sigma_x: Gaussian kernel standard deviation in X direction
@@ -82,9 +83,10 @@ class Drive:
         blur_gray = cv.GaussianBlur(gray, (kernel_size, kernel_size), sigma_x, sigma_y)  # gray scale the image
 
         # binary it
-        ret, binary = cv.threshold(blur_gray, 70, 255, cv.THRESH_BINARY)
+        # ret, binary = cv.threshold(blur_gray, 70, 255, cv.THRESH_BINARY)
+        ret, binary = cv.threshold(gray, 90, 255, cv.THRESH_BINARY)
 
-        cv.imshow("name", binary)
+        cv.imshow("camera view", binary)
         cv.waitKey(3)
 
         last_row = binary[-1, :]
