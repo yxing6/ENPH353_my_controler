@@ -6,30 +6,41 @@ import numpy as np
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
+from std_msgs.msg import String
+from rosgraph_msgs.msg import Clock
 
 
 class Drive:
 
     def __init__(self):
 
+        # set a simulation time
+        self.sim_time = 0
+
         # Initialize a ros node
         rospy.init_node('image_subscriber_node', anonymous=True)
 
-        # Subscribe to the image topic
+        # Subscribe to the image topic and clock
         self.image_sub = rospy.Subscriber("/R1/pi_camera/image_raw", Image, self.image_callback)
-
-        # Create a publisher for cmd_vel/
+        self.clock_sub = rospy.Subscriber("/clock", Clock, self.clock_callback)
+        # Create a publisher for cmd_vel and score_tracker
         self.cmd_vel_pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=10)
+        self.score_track_pub = rospy.Publisher("/score_tracker", String, queue_size=10)
+        # Set a rate to publish messages
+        self.rate = rospy.Rate(1)  # 1 Hz
 
         # Create a bridge between ROS and OpenCV
         self.bridge = CvBridge()
-
-        # control parameters
+        # driving control parameters
         self.Kp = 0.02  # Proportional gain
         self.error_threshold = 20  # drive with different linear speed wrt this error_theshold
         self.linear_val_max = 0.4  # drive fast when error is small
         self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
+
+        self.first_message_sent = False
+        self.last_message_sent = False
+        self.timer_started = None
 
     def image_callback(self, data):
 
@@ -44,7 +55,7 @@ class Drive:
         # Create Twist message and publish to cmd_vel
         twist_msg = Twist()
         speed = self.calculate_speed(cv_image)
-        print("speed: ", speed)
+        # print("speed: ", speed)
         twist_msg.linear.x = speed[0]
         twist_msg.angular.z = speed[1]
         self.cmd_vel_pub.publish(twist_msg)
@@ -90,7 +101,7 @@ class Drive:
         cv.waitKey(3)
 
         last_row = binary[-1, :]
-        print(last_row)
+        # print(last_row)
 
         if np.any(last_row == 0):
             last_list = last_row.tolist()
@@ -99,6 +110,29 @@ class Drive:
             new_mid = (first_index + last_index) / 2
             self.mid_x = new_mid
 
+    def clock_callback(self, data):
+
+        start_msg = 0
+        stop_msg = -1
+        string_message = "14, password, {0}, NA"
+
+        start_message = string_message.format(start_msg)
+        stop_message = string_message.format(stop_msg)
+
+        sim_time = data.clock.secs
+        duration = 10
+
+        if not self.first_message_sent:
+            print("I am going to send the first message to start! ")
+            self.timer_started = sim_time
+            self.score_track_pub.publish(start_message)
+            self.first_message_sent = True
+
+        if sim_time >= self.timer_started + duration:
+            if not self.last_message_sent:
+                print("I am going to stop the timer")
+                self.score_track_pub.publish(stop_message)
+                self.last_message_sent = True
 
 def main():
     try:
