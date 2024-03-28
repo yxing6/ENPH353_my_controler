@@ -26,8 +26,11 @@ class Drive:
         # Create a publisher for cmd_vel and score_tracker
         self.cmd_vel_pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=10)
         self.score_track_pub = rospy.Publisher("/score_tracker", String, queue_size=3)
+
+        # Add a delay of 1 second before sending any messages
+        rospy.sleep(1)
         # Set a rate to publish messages
-        self.rate = rospy.Rate(1)  # 1 Hz
+        self.rate = rospy.Rate(100)  # 100 Hz
 
         # Create a bridge between ROS and OpenCV
         self.bridge = CvBridge()
@@ -38,10 +41,7 @@ class Drive:
         self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
-        # self.last_message_sent = False
-        # self.fm_not_sent = True
-
-        self.timer_started = None
+        self.timer = None
         self.timer_not_inited = True
         self.start_not_sent = True
         self.end_not_sent = True
@@ -123,19 +123,16 @@ class Drive:
         start_message = string_message.format(start_msg)
         stop_message = string_message.format(stop_msg)
 
+        duration = 10
         sim_time = data.clock.secs
-        if self.timer_not_inited:
-            self.timer_started = sim_time
-            self.timer_not_inited = False
 
-        if sim_time >= self.timer_started + 3:
-            if self.start_not_sent:
-                print("I am going to send the first message to start! ")
-                self.score_track_pub.publish(start_message)
-                print("I have reached line 128! ")
-                self.start_not_sent = False
+        if self.start_not_sent:
+            print("I am going to send the first message to start! ")
+            self.score_track_pub.publish(start_message)
+            self.timer = sim_time
+            self.start_not_sent = False
 
-        if sim_time >= self.timer_started + 8:
+        if sim_time >= self.timer + duration:
             if self.end_not_sent:
                 print("I am going to stop the timer")
                 self.score_track_pub.publish(stop_message)
