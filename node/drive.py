@@ -38,9 +38,13 @@ class Drive:
         self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
-        self.last_message_sent = False
-        self.fm_not_sent = True
+        # self.last_message_sent = False
+        # self.fm_not_sent = True
+
         self.timer_started = None
+        self.timer_not_inited = True
+        self.start_not_sent = True
+        self.end_not_sent = True
 
     def image_callback(self, data):
 
@@ -112,28 +116,32 @@ class Drive:
 
     def clock_callback(self, data):
 
-        # start_msg = 0
-        # stop_msg = -1
-        # string_message = "14, password, {0}, NA"
+        start_msg = 0
+        stop_msg = -1
+        string_message = '14,password,{0},NA'
 
-        start_message = '14,password,0,START'
-        stop_message = '14,password,-1,STOP'
+        start_message = string_message.format(start_msg)
+        stop_message = string_message.format(stop_msg)
 
         sim_time = data.clock.secs
-        duration = 10
-
-        if self.fm_not_sent:
-            self.score_track_pub.publish('14,password,0,NA')
-            print("I am going to send the first message to start! ")
+        if self.timer_not_inited:
             self.timer_started = sim_time
-            print("I have reached line 128! ")
-            self.fm_not_sent = False
+            self.timer_not_inited = False
 
-        if sim_time >= self.timer_started + duration:
-            if not self.last_message_sent:
+        if sim_time >= self.timer_started + 3:
+            if self.start_not_sent:
+                print("I am going to send the first message to start! ")
+                self.score_track_pub.publish(start_message)
+                print("I have reached line 128! ")
+                self.start_not_sent = False
+
+        if sim_time >= self.timer_started + 8:
+            if self.end_not_sent:
                 print("I am going to stop the timer")
                 self.score_track_pub.publish(stop_message)
-                self.last_message_sent = True
+                self.end_not_sent = False
+
+
 def main():
     try:
         image_subscriber = Drive()
