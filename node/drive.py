@@ -59,44 +59,40 @@ class Drive:
             rospy.logerr(e)
             return
 
-        # TODO
-        # if timer_not_inited is true
-        # I start driving
-
-        # if end_not_sent is false
-        # I stop driving
-        # Create a Twist to stop the robot and publish to cmd_vel
-        twist_msg = Twist()
-        twist_msg.linear.x = 0
-        twist_msg.angular.z = 0
-        self.cmd_vel_pub.publish(twist_msg)
+        if not self.end_not_sent:
+            # if end_not_sent is false
+            # I stop driving
+            # Create a Twist to stop the robot and publish to cmd_vel
+            twist_msg = Twist()
+            twist_msg.linear.x = 0
+            twist_msg.angular.z = 0
+            self.cmd_vel_pub.publish(twist_msg)
 
 
         if self.end_not_sent and self.timer_not_inited:
             # Create Twist message and publish to cmd_vel
-            twist_msg = Twist()
-            speed = self.calculate_speed(cv_image)
-            # print("speed: ", speed)
-            twist_msg.linear.x = speed[0]
-            twist_msg.angular.z = speed[1]
+            twist_msg = self.calculate_speed(cv_image)
+            # print("speed: ", twist_msg.linear.x)
+            # print("angular: ", twist_msg.angular.z)
             self.cmd_vel_pub.publish(twist_msg)
 
     def calculate_speed(self, img):
 
         dim_x = img.shape[1]
+        twist_msg = Twist()
 
         # detect_line calculates and modifies the target center
         self.find_middle(img)
         # angular error is the different between the center of the frame and targer center
         angular_error = dim_x / 2 - self.mid_x
-        angular_vel = self.Kp * angular_error
+        twist_msg.angular.z = self.Kp * angular_error
 
         if abs(angular_error) <= self.error_threshold:
-            linear_vel = self.linear_val_max
+            twist_msg.linear.x = self.linear_val_max
         else:
-            linear_vel = self.linear_val_min
+            twist_msg.linear.x = self.linear_val_min
 
-        return linear_vel, angular_vel
+        return twist_msg
 
     def find_middle(self, img):
 
