@@ -25,7 +25,7 @@ class Drive:
         self.clock_sub = rospy.Subscriber("/clock", Clock, self.clock_callback)
         # Create a publisher for cmd_vel and score_tracker
         self.cmd_vel_pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=10)
-        self.score_track_pub = rospy.Publisher("/score_tracker", String, queue_size=10)
+        self.score_track_pub = rospy.Publisher("/score_tracker", String, queue_size=3)
         # Set a rate to publish messages
         self.rate = rospy.Rate(1)  # 1 Hz
 
@@ -38,8 +38,8 @@ class Drive:
         self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
-        self.first_message_sent = False
         self.last_message_sent = False
+        self.fm_not_sent = True
         self.timer_started = None
 
     def image_callback(self, data):
@@ -112,28 +112,28 @@ class Drive:
 
     def clock_callback(self, data):
 
-        start_msg = 0
-        stop_msg = -1
-        string_message = "14, password, {0}, NA"
+        # start_msg = 0
+        # stop_msg = -1
+        # string_message = "14, password, {0}, NA"
 
-        start_message = string_message.format(start_msg)
-        stop_message = string_message.format(stop_msg)
+        start_message = '14,password,0,START'
+        stop_message = '14,password,-1,STOP'
 
         sim_time = data.clock.secs
         duration = 10
 
-        if not self.first_message_sent:
+        if self.fm_not_sent:
+            self.score_track_pub.publish('14,password,0,NA')
             print("I am going to send the first message to start! ")
             self.timer_started = sim_time
-            self.score_track_pub.publish(start_message)
-            self.first_message_sent = True
+            print("I have reached line 128! ")
+            self.fm_not_sent = False
 
         if sim_time >= self.timer_started + duration:
             if not self.last_message_sent:
                 print("I am going to stop the timer")
                 self.score_track_pub.publish(stop_message)
                 self.last_message_sent = True
-
 def main():
     try:
         image_subscriber = Drive()
