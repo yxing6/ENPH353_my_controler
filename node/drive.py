@@ -30,7 +30,7 @@ class Drive:
         self.score_track_pub = rospy.Publisher("/score_tracker", String, queue_size=3)
 
         # Add a delay of 1 second before sending any messages
-        rospy.sleep(1)
+        rospy.sleep(3)
         # Set a rate to publish messages
         self.rate = rospy.Rate(100)  # 100 Hz
 
@@ -136,7 +136,7 @@ class Drive:
         start_message = string_message.format(start_msg)
         stop_message = string_message.format(stop_msg)
 
-        duration = 10
+        duration = 25
         sim_time = data.clock.secs
 
         if self.start_not_sent:
