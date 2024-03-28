@@ -20,11 +20,13 @@ class Drive:
         # Initialize a ros node
         rospy.init_node('image_subscriber_node', anonymous=True)
 
-        # Subscribe to the image topic and clock
+        # Subscribe to image topic
         self.image_sub = rospy.Subscriber("/R1/pi_camera/image_raw", Image, self.image_callback)
-        self.clock_sub = rospy.Subscriber("/clock", Clock, self.clock_callback)
-        # Create a publisher for cmd_vel and score_tracker
+        # Publish to cmd_vel topic
         self.cmd_vel_pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=10)
+        # Subscribe to clock topic
+        self.clock_sub = rospy.Subscriber("/clock", Clock, self.clock_callback)
+        # Publish to score_tracker
         self.score_track_pub = rospy.Publisher("/score_tracker", String, queue_size=3)
 
         # Add a delay of 1 second before sending any messages
@@ -56,13 +58,27 @@ class Drive:
             rospy.logerr(e)
             return
 
-        # Create Twist message and publish to cmd_vel
+        # TODO
+        # if timer_not_inited is true
+        # I start driving
+
+        # if end_not_sent is false
+        # I stop driving
+        # Create a Twist to stop the robot and publish to cmd_vel
         twist_msg = Twist()
-        speed = self.calculate_speed(cv_image)
-        # print("speed: ", speed)
-        twist_msg.linear.x = speed[0]
-        twist_msg.angular.z = speed[1]
+        twist_msg.linear.x = 0
+        twist_msg.angular.z = 0
         self.cmd_vel_pub.publish(twist_msg)
+
+
+        if self.end_not_sent and self.timer_not_inited:
+            # Create Twist message and publish to cmd_vel
+            twist_msg = Twist()
+            speed = self.calculate_speed(cv_image)
+            # print("speed: ", speed)
+            twist_msg.linear.x = speed[0]
+            twist_msg.angular.z = speed[1]
+            self.cmd_vel_pub.publish(twist_msg)
 
     def calculate_speed(self, img):
 
