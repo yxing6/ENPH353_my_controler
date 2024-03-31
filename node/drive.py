@@ -36,6 +36,13 @@ class Drive:
 
         # Create a bridge between ROS and OpenCV
         self.bridge = CvBridge()
+        self.camera_image = None
+
+        # read in the fizz gear for SIFT
+        gear_path = "/home/fizzer/ros_ws/src/2023_competition/enph353/enph353_utils/scripts/ENPHLogo.jpg"
+        self.gear_image = cv2.imread(gear_path)
+        # cv2.imshow("name", self.gear_image)
+        # cv2.waitKey(3)
 
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
@@ -54,10 +61,12 @@ class Drive:
         # process the scribed image from camera in openCV 
         # convert image message to openCV image 
         try:
-            cv_image = self.bridge.imgmsg_to_cv2(data, 'bgr8')
+            self.camera_image = self.bridge.imgmsg_to_cv2(data, 'bgr8')
         except Exception as e:
             rospy.logerr(e)
             return
+
+        self.SIFT_image()
 
         if not self.end_not_sent:
             # if end_not_sent is false
@@ -68,10 +77,10 @@ class Drive:
             twist_msg.angular.z = 0
             self.cmd_vel_pub.publish(twist_msg)
 
-
         if self.end_not_sent and self.timer_not_inited:
             # Create Twist message and publish to cmd_vel
-            twist_msg = self.calculate_speed(cv_image)
+            twist_msg = self.calculate_speed(self.camera_image)
+
             # print("speed: ", twist_msg.linear.x)
             # print("angular: ", twist_msg.angular.z)
             self.cmd_vel_pub.publish(twist_msg)
@@ -114,7 +123,7 @@ class Drive:
         # ret, binary = cv.threshold(blur_gray, 70, 255, cv.THRESH_BINARY)
         ret, binary = cv2.threshold(gray, 90, 255, cv2.THRESH_BINARY)
 
-        cv2.imshow("camera view", binary)
+        cv2.imshow("camera view", img)
         cv2.waitKey(3)
 
         last_row = binary[-1, :]
@@ -150,6 +159,59 @@ class Drive:
                 print("I am going to stop the timer")
                 self.score_track_pub.publish(stop_message)
                 self.end_not_sent = False
+
+    def SIFT_image(self):
+        camera_gray = cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2GRAY)
+        gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
+
+        # construct a SIFT object
+        sift = cv2.SIFT_create()
+
+        # detect the keypoint in the image,
+        # with mask being None, so every part of the image is being searched
+        keypoint = sift.detect(gear_grey, None)
+
+        # print("the number of key points: ", len(keypoint))
+
+        # draw the keypoint onto the image, show and save it
+        # kp = cv2.drawKeypoints(gear_grey, keypoint, gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        # cv2.imshow("kp", kp)
+        # cv2.waitKey(3)
+        # cv2.imwrite('keypoints detected.jpg', kp)
+
+        # calculate the descriptor for each key point
+        kp_gear, des_gear = sift.compute(gear_grey, keypoint)
+        kp_camera, des_camera = sift.detectAndCompute(camera_gray, None)
+
+        # FLANN parameters
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict()
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+        # return the best 2 matches
+        matches = flann.knnMatch(des_gear, des_camera, k=2)
+
+        # Need to draw only good matches, so create a mask
+        homography_mask = []
+
+        # ratio test as per Lowe's paper
+        for i, (m, n) in enumerate(matches):
+            if m.distance < 0.7 * n.distance:
+                homography_mask.append(m)
+
+        # draw homography in the camera image
+        query_pts = np.float32([kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
+        train_pts = np.float32([kp_camera[m.trainIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
+        matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
+
+        # Perspective transform
+        h, w = self.gear_image.shape[0]*10, self.gear_image.shape[1]*15
+        pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
+        dst = cv2.perspectiveTransform(pts, matrix)
+
+        homography_img = cv2.polylines(self.camera_image, [np.int32(dst)], True, (0, 0, 255), 4)
+        cv2.imshow("Homography", homography_img)
 
 
 def main():
