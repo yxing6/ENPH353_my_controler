@@ -47,8 +47,8 @@ class Drive:
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
         self.error_threshold = 20  # drive with different linear speed wrt this error_theshold
-        self.linear_val_max = 0.4  # drive fast when error is small
-        self.linear_val_min = 0.1  # drive slow when error is small
+        self.linear_val_max = 0.2  # drive fast when error is small
+        self.linear_val_min = 0.05  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
         self.timer = None
@@ -58,6 +58,9 @@ class Drive:
 
     def image_callback(self, data):
 
+        self.f += 1
+        n = 20
+
         # process the scribed image from camera in openCV 
         # convert image message to openCV image 
         try:
@@ -66,7 +69,9 @@ class Drive:
             rospy.logerr(e)
             return
 
-        self.SIFT_image()
+        if self.f % n == 0:
+            print("I am going to process a SIFT")
+            self.SIFT_image()
 
         if not self.end_not_sent:
             # if end_not_sent is false
