@@ -41,8 +41,25 @@ class Drive:
         # read in the fizz gear for SIFT
         gear_path = "/home/fizzer/ros_ws/src/2023_competition/enph353/enph353_utils/scripts/ENPHLogo.jpg"
         self.gear_image = cv2.imread(gear_path)
+        self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
+
+        # construct a SIFT object
+        self.sift = cv2.SIFT_create()
+        # detect the keypoint in the image,
+        # with mask being None, so every part of the image is being searched
+        self.keypoint = self.sift.detect(self.gear_grey, None)
+        # print("the number of key points: ", len(keypoint))
         # cv2.imshow("name", self.gear_image)
         # cv2.waitKey(3)
+        # draw the keypoint onto the image, show and save it
+        # kp = cv2.drawKeypoints(gear_grey, keypoint, gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        # cv2.imshow("kp", kp)
+        # cv2.waitKey(3)
+        # cv2.imwrite('keypoints detected.jpg', kp)
+
+        # calculate the descriptor for each key point
+        self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
+        self.f = 0
 
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
@@ -167,26 +184,7 @@ class Drive:
 
     def SIFT_image(self):
         camera_gray = cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2GRAY)
-        gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
-
-        # construct a SIFT object
-        sift = cv2.SIFT_create()
-
-        # detect the keypoint in the image,
-        # with mask being None, so every part of the image is being searched
-        keypoint = sift.detect(gear_grey, None)
-
-        # print("the number of key points: ", len(keypoint))
-
-        # draw the keypoint onto the image, show and save it
-        # kp = cv2.drawKeypoints(gear_grey, keypoint, gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        # cv2.imshow("kp", kp)
-        # cv2.waitKey(3)
-        # cv2.imwrite('keypoints detected.jpg', kp)
-
-        # calculate the descriptor for each key point
-        kp_gear, des_gear = sift.compute(gear_grey, keypoint)
-        kp_camera, des_camera = sift.detectAndCompute(camera_gray, None)
+        kp_camera, des_camera = self.sift.detectAndCompute(camera_gray, None)
 
         # FLANN parameters
         FLANN_INDEX_KDTREE = 1
@@ -195,7 +193,7 @@ class Drive:
         flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         # return the best 2 matches
-        matches = flann.knnMatch(des_gear, des_camera, k=2)
+        matches = flann.knnMatch(self.des_gear, des_camera, k=2)
 
         # Need to draw only good matches, so create a mask
         homography_mask = []
@@ -206,7 +204,7 @@ class Drive:
                 homography_mask.append(m)
 
         # draw homography in the camera image
-        query_pts = np.float32([kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
+        query_pts = np.float32([self.kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
         train_pts = np.float32([kp_camera[m.trainIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
         matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
 
