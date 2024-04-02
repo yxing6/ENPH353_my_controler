@@ -45,11 +45,44 @@ class Drive:
         self.gear_image = cv2.imread(gear_path)
         self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
 
-        # blue_path = "/home/fizzer/ros_ws/src/my_controller/launch/blue.png"
-        # self.blue_image = cv2.imread(blue_path)
-        # self.blueHSV = cv2.cvtColor(self.blue_image, cv2.COLOR_BGR2HSV)
-        # print("BGR of blue:", self.blue_image)
-        # print("HSV of blue:", self.blueHSV)
+        blue_1 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_1.png"
+        # blue_2 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_2.png"
+        # blue_3 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_3.png"
+        # blue_4 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_4.png"
+        # blue_5 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_5.png"
+        # # blue_6 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_6.png"
+        # blue_7 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_7.png"
+        # blue_8 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_8.png"
+
+        self.blue_image = cv2.imread(blue_1)
+        self.blueHSV = cv2.cvtColor(self.blue_image, cv2.COLOR_BGR2HSV)
+
+        # blue_1 = cv2.imread(blue_1)
+        # blue_2 = cv2.imread(blue_2)
+        # blue_3 = cv2.imread(blue_3)
+        # blue_4 = cv2.imread(blue_4)
+        # blue_5 = cv2.imread(blue_5)
+        # # blue_6 = cv2.imread(blue_6)
+        # blue_7 = cv2.imread(blue_7)
+        # blue_8 = cv2.imread(blue_8)
+        # blue_1_HSV = cv2.cvtColor(blue_1, cv2.COLOR_BGR2HSV)
+        # blue_2_HSV = cv2.cvtColor(blue_2, cv2.COLOR_BGR2HSV)
+        # blue_3_HSV = cv2.cvtColor(blue_3, cv2.COLOR_BGR2HSV)
+        # blue_4_HSV = cv2.cvtColor(blue_4, cv2.COLOR_BGR2HSV)
+        # blue_5_HSV = cv2.cvtColor(blue_5, cv2.COLOR_BGR2HSV)
+        # # blue_6_HSV = cv2.cvtColor(blue_6, cv2.COLOR_BGR2HSV)
+        # blue_7_HSV = cv2.cvtColor(blue_7, cv2.COLOR_BGR2HSV)
+        # blue_8_HSV = cv2.cvtColor(blue_8, cv2.COLOR_BGR2HSV)
+
+        # # print("BGR of blue:", self.blue_image)
+        # print("HSV of blue_1:", blue_1_HSV)
+        # print("HSV of blue_2:", blue_2_HSV)
+        # print("HSV of blue_3:", blue_3_HSV)
+        # print("HSV of blue_4:", blue_4_HSV)
+        # print("HSV of blue_5:", blue_5_HSV)
+        # # print("HSV of blue_6:", blue_6_HSV)
+        # print("HSV of blue_7:", blue_7_HSV)
+        # print("HSV of blue_8:", blue_8_HSV)
 
         # construct a SIFT object
         self.sift = cv2.SIFT_create()
@@ -67,13 +100,12 @@ class Drive:
 
         # calculate the descriptor for each key point
         self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
-        self.f = 0
 
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
         self.error_threshold = 20  # drive with different linear speed wrt this error_theshold
-        self.linear_val_max = 0.2  # drive fast when error is small
-        self.linear_val_min = 0.05  # drive slow when error is small
+        self.linear_val_max = 0.4  # drive fast when error is small
+        self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
         self.timer = None
@@ -88,10 +120,6 @@ class Drive:
         return twist_msg
 
     def image_callback(self, data):
-
-        self.f += 1
-        s = 200
-        e = 5
 
         # process the scribed image from camera in openCV 
         # convert image message to openCV image 
@@ -196,7 +224,6 @@ class Drive:
 
     def SIFT_image(self):
 
-        self.clue_board_detected = False
 
         clue_board_grey = cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2GRAY)
         kp_camera, des_camera = self.sift.detectAndCompute(clue_board_grey, None)
@@ -230,17 +257,24 @@ class Drive:
             h, w = self.gear_image.shape[0], self.gear_image.shape[1]
             pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
             dst = cv2.perspectiveTransform(pts, matrix)
+            print([np.int32(dst)])
 
             homography_img = cv2.polylines(self.camera_image, [np.int32(dst)], True, (0, 0, 255), 4)
             cv2.imshow("Homography", homography_img)
 
+        self.clue_board_detected = False
+
     def clue_board_detection(self):
 
-        hsv = cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2HSV)
+        height, width, _ = self.camera_image.shape
+        roi = self.camera_image[int(height/2.5):, :]
+
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        cv2.imshow('Blue Square Detection', hsv)
 
         # Define range of blue color in HSV
-        lower_blue = np.array([115, 255, 90])
-        upper_blue = np.array([125, 255, 110])
+        lower_blue = np.array([100, 100, 100])
+        upper_blue = np.array([140, 255, 220])
 
         # Threshold the HSV image to get only blue colors
         mask = cv2.inRange(hsv, lower_blue, upper_blue)
@@ -254,14 +288,16 @@ class Drive:
             approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
             if len(approx) == 4:
                 x, y, w, h = cv2.boundingRect(contour)
-                if w > 100 and h > 50 and 1.5 < w/h < 2.5:
-                    # print("width is: ", w)
-                    # print("height is: ", h)
-                    img = cv2.rectangle(self.camera_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                if w > 200 and h > 150 and 1.5 < w/h < 2.5:
+                    print("width is: ", w)
+                    print("height is: ", h)
+                    img = cv2.rectangle(roi, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    # cv2.imshow('Blue Square Detection', img)
+
                     self.clue_board_detected = True
 
                     # Display the result
-                    self.clue_board_raw = self.camera_image[y:y + h, x:x + w]
+                    self.clue_board_raw = roi[y:y + h, x:x + w]
                     cv2.imshow('Blue Square Detection', self.clue_board_raw)
 
 
