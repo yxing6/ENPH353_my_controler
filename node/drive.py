@@ -41,7 +41,7 @@ class Drive:
         self.clue_board_raw = None
 
         # read in the fizz gear for SIFT
-        gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
+        gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board.png"
         self.gear_image = cv2.imread(gear_path)
         self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
 
@@ -65,7 +65,7 @@ class Drive:
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
         self.error_threshold = 20  # drive with different linear speed wrt this error_theshold
-        self.linear_val_max = 0.25  # drive fast when error is small
+        self.linear_val_max = 0.3  # drive fast when error is small
         self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
@@ -83,6 +83,11 @@ class Drive:
     def drive_normal(self):
         return self.calculate_speed(self.camera_image)
 
+    def drive_slower(self):
+        slow_twist = self.calculate_speed(self.camera_image)
+        slow_twist.linear.x = slow_twist.linear.x / 2
+        return slow_twist
+
     def image_callback(self, data):
 
         # process the scribed image from camera in openCV 
@@ -98,6 +103,7 @@ class Drive:
         self.clue_board_detection()
         if self.clue_board_detected:
             self.SIFT_image()
+            # self.reshape_image()
 
         if self.end_not_sent and not self.start_not_sent:
             # if end_not_sent is true and start_not_sent is false
@@ -237,7 +243,7 @@ class Drive:
 
             # Perspective transform
             h, w = self.gear_image.shape[0], self.gear_image.shape[1]
-            pts = np.float32([[0, 0], [0, 2*h], [2*w, 2*h], [2*w, 0]]).reshape(-1, 1, 2)
+            pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
             dst = cv2.perspectiveTransform(pts, matrix)
 
             homography_img = cv2.polylines(self.clue_board_raw, [np.int32(dst)], True, (0, 0, 255), 4)
@@ -245,6 +251,12 @@ class Drive:
             cv2.waitKey(1)
 
         self.clue_board_detected = False
+
+    def reshape_image(self):
+        gray = cv2.cvtColor(self.clue_board_raw, cv2.COLOR_BGR2GRAY)
+        ret, binary = cv2.threshold(gray, 90, 255, cv2.THRESH_BINARY)
+        cv2.imshow("binary clue board", binary)
+        cv2.waitKey(1)
 
 
 def main():
