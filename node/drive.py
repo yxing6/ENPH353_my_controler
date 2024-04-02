@@ -37,11 +37,19 @@ class Drive:
         # Create a bridge between ROS and OpenCV
         self.bridge = CvBridge()
         self.camera_image = None
+        self.clue_board_detected = False
+        self.clue_board_raw = None
 
         # read in the fizz gear for SIFT
-        gear_path = "/home/fizzer/ros_ws/src/2023_competition/enph353/enph353_utils/scripts/ENPHLogo.jpg"
+        gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
         self.gear_image = cv2.imread(gear_path)
         self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
+
+        # blue_path = "/home/fizzer/ros_ws/src/my_controller/launch/blue.png"
+        # self.blue_image = cv2.imread(blue_path)
+        # self.blueHSV = cv2.cvtColor(self.blue_image, cv2.COLOR_BGR2HSV)
+        # print("BGR of blue:", self.blue_image)
+        # print("HSV of blue:", self.blueHSV)
 
         # construct a SIFT object
         self.sift = cv2.SIFT_create()
@@ -52,7 +60,7 @@ class Drive:
         # cv2.imshow("name", self.gear_image)
         # cv2.waitKey(3)
         # draw the keypoint onto the image, show and save it
-        # kp = cv2.drawKeypoints(gear_grey, keypoint, gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        # kp = cv2.drawKeypoints(self.gear_grey, self.keypoint, self.gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         # cv2.imshow("kp", kp)
         # cv2.waitKey(3)
         # cv2.imwrite('keypoints detected.jpg', kp)
@@ -73,10 +81,17 @@ class Drive:
         self.start_not_sent = True
         self.end_not_sent = True
 
+    def robot_stop(self):
+        twist_msg = Twist()
+        twist_msg.linear.x = 0
+        twist_msg.angular.z = 0
+        return twist_msg
+
     def image_callback(self, data):
 
         self.f += 1
-        n = 20
+        s = 200
+        e = 5
 
         # process the scribed image from camera in openCV 
         # convert image message to openCV image 
@@ -86,23 +101,20 @@ class Drive:
             rospy.logerr(e)
             return
 
-        if self.f % n == 0:
-            print("I am going to process a SIFT")
+        self.clue_board_detection()
+        if self.clue_board_detected:
             self.SIFT_image()
 
         if not self.end_not_sent:
             # if end_not_sent is false
             # I stop driving
             # Create a Twist to stop the robot and publish to cmd_vel
-            twist_msg = Twist()
-            twist_msg.linear.x = 0
-            twist_msg.angular.z = 0
+            twist_msg = self.robot_stop()
             self.cmd_vel_pub.publish(twist_msg)
 
         if self.end_not_sent and self.timer_not_inited:
             # Create Twist message and publish to cmd_vel
             twist_msg = self.calculate_speed(self.camera_image)
-
             # print("speed: ", twist_msg.linear.x)
             # print("angular: ", twist_msg.angular.z)
             self.cmd_vel_pub.publish(twist_msg)
@@ -183,8 +195,11 @@ class Drive:
                 self.end_not_sent = False
 
     def SIFT_image(self):
-        camera_gray = cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2GRAY)
-        kp_camera, des_camera = self.sift.detectAndCompute(camera_gray, None)
+
+        self.clue_board_detected = False
+
+        clue_board_grey = cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2GRAY)
+        kp_camera, des_camera = self.sift.detectAndCompute(clue_board_grey, None)
 
         # FLANN parameters
         FLANN_INDEX_KDTREE = 1
@@ -206,15 +221,48 @@ class Drive:
         # draw homography in the camera image
         query_pts = np.float32([self.kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
         train_pts = np.float32([kp_camera[m.trainIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
-        matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
+        # print("number of points in query_pts: ", len(query_pts))
+        # print("number of points in train_pts: ", len(train_pts))
+        if len(query_pts) >= 4:
+            matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
 
-        # Perspective transform
-        h, w = self.gear_image.shape[0]*10, self.gear_image.shape[1]*15
-        pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
-        dst = cv2.perspectiveTransform(pts, matrix)
+            # Perspective transform
+            h, w = self.gear_image.shape[0], self.gear_image.shape[1]
+            pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
+            dst = cv2.perspectiveTransform(pts, matrix)
 
-        homography_img = cv2.polylines(self.camera_image, [np.int32(dst)], True, (0, 0, 255), 4)
-        cv2.imshow("Homography", homography_img)
+            homography_img = cv2.polylines(self.camera_image, [np.int32(dst)], True, (0, 0, 255), 4)
+            cv2.imshow("Homography", homography_img)
+
+    def clue_board_detection(self):
+
+        hsv = cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2HSV)
+
+        # Define range of blue color in HSV
+        lower_blue = np.array([115, 255, 90])
+        upper_blue = np.array([125, 255, 110])
+
+        # Threshold the HSV image to get only blue colors
+        mask = cv2.inRange(hsv, lower_blue, upper_blue)
+
+        # Find contours in the thresholded image
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Filter contours to find square-like shapes
+        for contour in contours:
+            perimeter = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
+            if len(approx) == 4:
+                x, y, w, h = cv2.boundingRect(contour)
+                if w > 100 and h > 50 and 1.5 < w/h < 2.5:
+                    # print("width is: ", w)
+                    # print("height is: ", h)
+                    img = cv2.rectangle(self.camera_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    self.clue_board_detected = True
+
+                    # Display the result
+                    self.clue_board_raw = self.camera_image[y:y + h, x:x + w]
+                    cv2.imshow('Blue Square Detection', self.clue_board_raw)
 
 
 def main():
@@ -222,7 +270,7 @@ def main():
         image_subscriber = Drive()
         rospy.spin()
     except rospy.ROSInterruptException:
-        cv2.destroyAllWindows()
+        cv2.detroyAllWindows()
 
 
 if __name__ == '__main__':
