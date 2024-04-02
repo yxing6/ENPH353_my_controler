@@ -65,7 +65,7 @@ class Drive:
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
         self.error_threshold = 20  # drive with different linear speed wrt this error_theshold
-        self.linear_val_max = 0.4  # drive fast when error is small
+        self.linear_val_max = 0.25  # drive fast when error is small
         self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
@@ -119,7 +119,7 @@ class Drive:
 
         # detect_line calculates and modifies the target center
         self.find_middle(img)
-        # angular error is the different between the center of the frame and targer center
+        # angular error is the different between the center of the frame and target center
         angular_error = dim_x / 2 - self.mid_x
         twist_msg.angular.z = self.Kp * angular_error
 
@@ -132,26 +132,9 @@ class Drive:
 
     def find_middle(self, img):
 
-        # image processing: 
-        # change the frame to grey scale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # not using gaussianBlur for now
-        # blur it so the "road" far away become less easy to detect
-        # kernel_size: Gaussian kernel size
-        # sigma_x: Gaussian kernel standard deviation in X direction
-        # sigma_y: Gaussian kernel standard deviation in Y direction
-        # kernel_size = 13
-        # sigma_x = 5
-        # sigma_y = 5
-        # blur_gray = cv2.GaussianBlur(gray, (kernel_size, kernel_size), sigma_x, sigma_y)  # gray scale the image
-
-        # binary it
-        # ret, binary = cv.threshold(blur_gray, 70, 255, cv.THRESH_BINARY)
         ret, binary = cv2.threshold(gray, 90, 255, cv2.THRESH_BINARY)
-
         last_row = binary[-1, :]
-        # print(last_row)
 
         if np.any(last_row == 0):
             last_list = last_row.tolist()
@@ -184,55 +167,14 @@ class Drive:
                 self.score_track_pub.publish(stop_message)
                 self.end_not_sent = False
 
-    def SIFT_image(self):
-
-
-        clue_board_grey = cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2GRAY)
-        kp_camera, des_camera = self.sift.detectAndCompute(clue_board_grey, None)
-
-        # FLANN parameters
-        FLANN_INDEX_KDTREE = 1
-        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict()
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
-
-        # return the best 2 matches
-        matches = flann.knnMatch(self.des_gear, des_camera, k=2)
-
-        # Need to draw only good matches, so create a mask
-        homography_mask = []
-
-        # ratio test as per Lowe's paper
-        for i, (m, n) in enumerate(matches):
-            if m.distance < 0.7 * n.distance:
-                homography_mask.append(m)
-
-        # draw homography in the camera image
-        query_pts = np.float32([self.kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
-        train_pts = np.float32([kp_camera[m.trainIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
-        # print("number of points in query_pts: ", len(query_pts))
-        # print("number of points in train_pts: ", len(train_pts))
-        if len(query_pts) >= 4:
-            matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
-
-            # Perspective transform
-            h, w = self.gear_image.shape[0], self.gear_image.shape[1]
-            pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
-            dst = cv2.perspectiveTransform(pts, matrix)
-            print([np.int32(dst)])
-
-            homography_img = cv2.polylines(self.camera_image, [np.int32(dst)], True, (0, 0, 255), 4)
-            cv2.imshow("Homography", homography_img)
-
-        self.clue_board_detected = False
-
     def clue_board_detection(self):
 
         height, width, _ = self.camera_image.shape
         roi = self.camera_image[int(height/2.5):, :]
 
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        cv2.imshow('Blue Square Detection', hsv)
+        # cv2.imshow('Blue Square Detection', hsv)
+        # cv2.waitKey(1)
 
         # Define range of blue color in HSV
         lower_blue = np.array([100, 100, 100])
@@ -255,12 +197,54 @@ class Drive:
                     print("height is: ", h)
                     img = cv2.rectangle(roi, (x, y), (x + w, y + h), (0, 255, 0), 2)
                     # cv2.imshow('Blue Square Detection', img)
+                    # cv2.waitKey(1)
 
                     self.clue_board_detected = True
 
                     # Display the result
                     self.clue_board_raw = roi[y:y + h, x:x + w]
-                    cv2.imshow('Blue Square Detection', self.clue_board_raw)
+                    cv2.imshow('Blue Square RAW', self.clue_board_raw)
+
+    def SIFT_image(self):
+
+        matching_points = 4
+
+        clue_board_grey = cv2.cvtColor(self.clue_board_raw, cv2.COLOR_BGR2GRAY)
+        kp_camera, des_camera = self.sift.detectAndCompute(clue_board_grey, None)
+
+        # FLANN parameters
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict()
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+        # return the best 2 matches
+        matches = flann.knnMatch(self.des_gear, des_camera, k=2)
+
+        # Need to draw only good matches, so create a mask
+        homography_mask = []
+
+        # ratio test as per Lowe's paper
+        for i, (m, n) in enumerate(matches):
+            if m.distance < 0.7 * n.distance:
+                homography_mask.append(m)
+
+        # draw homography in the camera image
+        query_pts = np.float32([self.kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
+        train_pts = np.float32([kp_camera[m.trainIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
+        if len(query_pts) >= matching_points:
+            matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
+
+            # Perspective transform
+            h, w = self.gear_image.shape[0], self.gear_image.shape[1]
+            pts = np.float32([[0, 0], [0, 2*h], [2*w, 2*h], [2*w, 0]]).reshape(-1, 1, 2)
+            dst = cv2.perspectiveTransform(pts, matrix)
+
+            homography_img = cv2.polylines(self.clue_board_raw, [np.int32(dst)], True, (0, 0, 255), 4)
+            cv2.imshow("Homography", homography_img)
+            cv2.waitKey(1)
+
+        self.clue_board_detected = False
 
 
 def main():
