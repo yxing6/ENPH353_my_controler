@@ -45,45 +45,6 @@ class Drive:
         self.gear_image = cv2.imread(gear_path)
         self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
 
-        blue_1 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_1.png"
-        # blue_2 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_2.png"
-        # blue_3 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_3.png"
-        # blue_4 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_4.png"
-        # blue_5 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_5.png"
-        # # blue_6 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_6.png"
-        # blue_7 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_7.png"
-        # blue_8 = "/home/fizzer/ros_ws/src/my_controller/launch/blue_8.png"
-
-        self.blue_image = cv2.imread(blue_1)
-        self.blueHSV = cv2.cvtColor(self.blue_image, cv2.COLOR_BGR2HSV)
-
-        # blue_1 = cv2.imread(blue_1)
-        # blue_2 = cv2.imread(blue_2)
-        # blue_3 = cv2.imread(blue_3)
-        # blue_4 = cv2.imread(blue_4)
-        # blue_5 = cv2.imread(blue_5)
-        # # blue_6 = cv2.imread(blue_6)
-        # blue_7 = cv2.imread(blue_7)
-        # blue_8 = cv2.imread(blue_8)
-        # blue_1_HSV = cv2.cvtColor(blue_1, cv2.COLOR_BGR2HSV)
-        # blue_2_HSV = cv2.cvtColor(blue_2, cv2.COLOR_BGR2HSV)
-        # blue_3_HSV = cv2.cvtColor(blue_3, cv2.COLOR_BGR2HSV)
-        # blue_4_HSV = cv2.cvtColor(blue_4, cv2.COLOR_BGR2HSV)
-        # blue_5_HSV = cv2.cvtColor(blue_5, cv2.COLOR_BGR2HSV)
-        # # blue_6_HSV = cv2.cvtColor(blue_6, cv2.COLOR_BGR2HSV)
-        # blue_7_HSV = cv2.cvtColor(blue_7, cv2.COLOR_BGR2HSV)
-        # blue_8_HSV = cv2.cvtColor(blue_8, cv2.COLOR_BGR2HSV)
-
-        # # print("BGR of blue:", self.blue_image)
-        # print("HSV of blue_1:", blue_1_HSV)
-        # print("HSV of blue_2:", blue_2_HSV)
-        # print("HSV of blue_3:", blue_3_HSV)
-        # print("HSV of blue_4:", blue_4_HSV)
-        # print("HSV of blue_5:", blue_5_HSV)
-        # # print("HSV of blue_6:", blue_6_HSV)
-        # print("HSV of blue_7:", blue_7_HSV)
-        # print("HSV of blue_8:", blue_8_HSV)
-
         # construct a SIFT object
         self.sift = cv2.SIFT_create()
         # detect the keypoint in the image,
@@ -109,15 +70,18 @@ class Drive:
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
         self.timer = None
-        self.timer_not_inited = True
+        # self.timer_not_inited = True
         self.start_not_sent = True
         self.end_not_sent = True
 
-    def robot_stop(self):
+    def stop(self):
         twist_msg = Twist()
         twist_msg.linear.x = 0
         twist_msg.angular.z = 0
         return twist_msg
+
+    def drive_normal(self):
+        return self.calculate_speed(self.camera_image)
 
     def image_callback(self, data):
 
@@ -125,6 +89,8 @@ class Drive:
         # convert image message to openCV image 
         try:
             self.camera_image = self.bridge.imgmsg_to_cv2(data, 'bgr8')
+            cv2.imshow("Full camera view", self.camera_image)
+            cv2.waitKey(3)
         except Exception as e:
             rospy.logerr(e)
             return
@@ -133,18 +99,17 @@ class Drive:
         if self.clue_board_detected:
             self.SIFT_image()
 
+        if self.end_not_sent and not self.start_not_sent:
+            # if end_not_sent is true and start_not_sent is false
+            # Create Twist message and publish to cmd_vel
+            twist_msg = self.drive_normal()
+            self.cmd_vel_pub.publish(twist_msg)
+
         if not self.end_not_sent:
             # if end_not_sent is false
             # I stop driving
             # Create a Twist to stop the robot and publish to cmd_vel
-            twist_msg = self.robot_stop()
-            self.cmd_vel_pub.publish(twist_msg)
-
-        if self.end_not_sent and self.timer_not_inited:
-            # Create Twist message and publish to cmd_vel
-            twist_msg = self.calculate_speed(self.camera_image)
-            # print("speed: ", twist_msg.linear.x)
-            # print("angular: ", twist_msg.angular.z)
+            twist_msg = self.stop()
             self.cmd_vel_pub.publish(twist_msg)
 
     def calculate_speed(self, img):
@@ -176,17 +141,14 @@ class Drive:
         # kernel_size: Gaussian kernel size
         # sigma_x: Gaussian kernel standard deviation in X direction
         # sigma_y: Gaussian kernel standard deviation in Y direction
-        kernel_size = 13
-        sigma_x = 5
-        sigma_y = 5
-        blur_gray = cv2.GaussianBlur(gray, (kernel_size, kernel_size), sigma_x, sigma_y)  # gray scale the image
+        # kernel_size = 13
+        # sigma_x = 5
+        # sigma_y = 5
+        # blur_gray = cv2.GaussianBlur(gray, (kernel_size, kernel_size), sigma_x, sigma_y)  # gray scale the image
 
         # binary it
         # ret, binary = cv.threshold(blur_gray, 70, 255, cv.THRESH_BINARY)
         ret, binary = cv2.threshold(gray, 90, 255, cv2.THRESH_BINARY)
-
-        cv2.imshow("camera view", img)
-        cv2.waitKey(3)
 
         last_row = binary[-1, :]
         # print(last_row)
