@@ -41,27 +41,26 @@ class Drive:
         self.clue_board_raw = None
         self.clue_board_reshaped = None
 
-        # read in the fizz gear for SIFT
-        gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
-        self.gear_image = cv2.imread(gear_path)
-        self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
-
-        # construct a SIFT object
-        self.sift = cv2.SIFT_create()
-        # detect the keypoint in the image,
-        # with mask being None, so every part of the image is being searched
-        self.keypoint = self.sift.detect(self.gear_grey, None)
-        # print("the number of key points: ", len(keypoint))
-        # cv2.imshow("name", self.gear_image)
-        # cv2.waitKey(3)
-        # draw the keypoint onto the image, show and save it
-        # kp = cv2.drawKeypoints(self.gear_grey, self.keypoint, self.gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        # cv2.imshow("kp", kp)
-        # cv2.waitKey(3)
-        # cv2.imwrite('keypoints detected.jpg', kp)
-
-        # calculate the descriptor for each key point
-        self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
+        # # read in the fizz gear for SIFT
+        # gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
+        # self.gear_image = cv2.imread(gear_path)
+        # self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
+        # # construct a SIFT object
+        # self.sift = cv2.SIFT_create()
+        # # detect the keypoint in the image,
+        # # with mask being None, so every part of the image is being searched
+        # self.keypoint = self.sift.detect(self.gear_grey, None)
+        # # print("the number of key points: ", len(keypoint))
+        # # cv2.imshow("name", self.gear_image)
+        # # cv2.waitKey(3)
+        # # draw the keypoint onto the image, show and save it
+        # # kp = cv2.drawKeypoints(self.gear_grey, self.keypoint, self.gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        # # cv2.imshow("kp", kp)
+        # # cv2.waitKey(3)
+        # # cv2.imwrite('keypoints detected.jpg', kp)
+        #
+        # # calculate the descriptor for each key point
+        # self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
 
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
@@ -71,7 +70,6 @@ class Drive:
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
         self.timer = None
-        # self.timer_not_inited = True
         self.start_not_sent = True
         self.end_not_sent = True
 
@@ -107,10 +105,10 @@ class Drive:
             rospy.logerr(e)
             return
 
-        self.clue_board_detection()
+        if not self.clue_board_detected:
+            self.clue_board_detection()
         if self.clue_board_detected:
-            self.SIFT_image()
-            # self.reshape_image()
+            self.process_image()
 
         if self.end_not_sent and not self.start_not_sent:
             # if end_not_sent is true and start_not_sent is false
@@ -285,22 +283,6 @@ class Drive:
                     bottom_left = [np.min(corner_points[:, 0]), np.max(corner_points[:, 1])]
                     bottom_right = np.max(corner_points, axis=0)
 
-                    # Output the four corner points
-                    print("Top Left:", top_left)
-                    print("Top Right:", top_right)
-                    print("Bottom Left:", bottom_left)
-                    print("Bottom Right:", bottom_right)
-
-                    radius = 3  # Radius of the circles
-                    thickness = 4  # Thickness of the circle outline
-                    color = (0, 255, 0)  # Color of the circles (in BGR format)
-                    cv2.circle(clue_board_intermittent, top_left, radius, color, thickness, -1)
-                    cv2.circle(clue_board_intermittent, top_right, radius, color, thickness, -1)
-                    cv2.circle(clue_board_intermittent, bottom_left, radius, color, thickness, -1)
-                    cv2.circle(clue_board_intermittent, bottom_right, radius, color, thickness, -1)
-                    cv2.imshow('corner detected', clue_board_intermittent)
-                    cv2.waitKey(1)
-
                     # perspective transform the clue_board
                     src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
                     dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
@@ -310,7 +292,7 @@ class Drive:
                     cv2.imshow('Message reshaped', self.clue_board_reshaped)
                     cv2.waitKey(1)
 
-                    # self.clue_board_detected = True
+                    self.clue_board_detected = True
 
     def SIFT_image(self):
 
@@ -353,45 +335,10 @@ class Drive:
 
         self.clue_board_detected = False
 
-    def reshape_image(self):
-
-        gray = cv2.cvtColor(self.clue_board_raw, cv2.COLOR_BGR2GRAY)
-        ret, binary = cv2.threshold(gray, 70, 255, cv2.THRESH_BINARY)
-        # Find contours in the thresholded image
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # Filter the contours based on their area to get the largest contour
-        # largest_contour = max(contours, key=cv2.contourArea)
-
-        for contour in contours:
-            perimeter = cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
-            if len(approx) == 4:
-                x, y, w, h = cv2.boundingRect(contour)
-                if w > 200 and h > 150 and 1.5 < w/h < 2.5:
-                    print("width is: ", w)
-                    print("height is: ", h)
-                    img = cv2.rectangle(self.clue_board_raw, (x, y), (x + w, y + h), (0, 0, 255), 4)
-                    cv2.imshow('find contour of clue board', img)
-        # Find the bounding box of the largest contour
-        # x, y, w, h = cv2.boundingRect(largest_contour)
-
-        # # Extract the four corners of the bounding box
-        # top_left = (x, y)
-        # top_right = (x + w, y)
-        # bottom_left = (x, y + h)
-        # bottom_right = (x + w, y + h)
-        #
-        # # Draw circles at the corners (optional)
-        # cv2.circle(self.clue_board_raw, top_left, 5, (0, 0, 255), -1)
-        # cv2.circle(self.clue_board_raw, top_right, 5, (0, 0, 255), -1)
-        # cv2.circle(self.clue_board_raw, bottom_left, 5, (0, 0, 255), -1)
-        # cv2.circle(self.clue_board_raw, bottom_right, 5, (0, 0, 255), -1)
-
-        # cv2.imshow("find contour of clue board", self.clue_board_raw)
-        # cv2.waitKey(1)
+    def process_image(self):
 
         self.clue_board_detected = False
+        return
 
 
 def main():
