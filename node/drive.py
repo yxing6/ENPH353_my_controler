@@ -219,10 +219,10 @@ class Drive:
                     # bottom_left = (x, y + h)
                     # bottom_right = (x + w, y + h)
                     #
-                    # radius = 5  # Radius of the circles
-                    # thickness = 2  # Thickness of the circle outline
-                    # color = (0, 255, 0)  # Color of the circles (in BGR format)
-                    #
+                    radius = 5  # Radius of the circles
+                    thickness = 4  # Thickness of the circle outline
+                    color = (0, 255, 0)  # Color of the circles (in BGR format)
+
                     # # Draw circles at each corner point
                     # cv2.circle(roi, top_left, radius, color, thickness)
                     # cv2.circle(roi, top_right, radius, color, thickness)
@@ -256,28 +256,70 @@ class Drive:
                     cv2.waitKey(1)
 
                     # Apply Harris Corner Detector
+                    block_size = 5
+                    aperture_size = 5
+                    k = 0.1
+                    # [:, :, 2] to select all rows, columns, and the elements in the third dimension (the blue channel).
+                    harris_corners = cv2.cornerHarris(warped_image[:, :, 2], block_size, aperture_size, k)
 
-                    # gray = cv2.cvtColor(self.clue_board_raw, cv2.COLOR_BGR2GRAY)
-                    # block_size = 5
-                    # aperture_size = 5
-                    # k = 0.1
-                    # harris_corners = cv2.cornerHarris(gray, block_size, aperture_size, k)
-                    # good_corners = 0.01 * harris_corners.max()
-                    # print("number of corners: ", good_corners.shape)
+                    # optimal value as a mask to be used identify strong corners
+                    good_corner_mask = 0.01 * harris_corners.max()
 
+                    # Threshold the Harris corner response values to identify strong corners
+                    corners_mask = np.zeros_like(harris_corners, dtype=np.uint8)
+                    corners_mask[harris_corners > good_corner_mask] = 255  # Set strong corners to white (255)
 
-                    # # perspective transform the clue_board
-                    # src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
-                    # width, height = 600, 400
-                    # dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
-                    # matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                    # self.clue_board_reshaped = cv2.warpPerspective(self.clue_board_raw, matrix, (width, height))
-                    #
+                    # Now, you can use this corners_mask to mask out the corners
+                    masked_warped_image = cv2.bitwise_and(warped_image, warped_image, mask=corners_mask)
+
+                    cv2.imshow('masked', masked_warped_image)
+                    cv2.waitKey(1)
+
+                    # Find contours in the corners mask
+                    contours, _ = cv2.findContours(corners_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+                    # Initialize lists to store corner points
+                    corner_points = []
+
+                    # Extract corner points from contours
+                    for c in contours:
+                        # Find bounding rectangle of the contour
+                        x, y, w, h = cv2.boundingRect(c)
+                        # Add corners of the rectangle to corner_points list
+                        corner_points.extend([(x, y), (x + w, y), (x, y + h), (x + w, y + h)])
+
+                    # Convert corner_points list to NumPy array
+                    corner_points = np.array(corner_points)
+                    # Find the extreme points to determine the four corner points
+                    top_left = np.min(corner_points, axis=0)
+                    top_right = [np.max(corner_points[:, 0]), np.min(corner_points[:, 1])]
+                    bottom_left = [np.min(corner_points[:, 0]), np.max(corner_points[:, 1])]
+                    bottom_right = np.max(corner_points, axis=0)
+
+                    # Output the four corner points
+                    print("Top Left:", top_left)
+                    print("Top Right:", top_right)
+                    print("Bottom Left:", bottom_left)
+                    print("Bottom Right:", bottom_right)
+                    cv2.circle(warped_image, top_left, radius, color, thickness)
+                    cv2.circle(warped_image, top_right, radius, color, thickness)
+                    cv2.circle(warped_image, bottom_left, radius, color, thickness)
+                    cv2.circle(warped_image, bottom_right, radius, color, thickness)
+                    cv2.imshow('corner detected', warped_image)
+                    cv2.waitKey(1)
+
+                    # perspective transform the clue_board
+                    src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
+                    width, height = 600, 400
+                    dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
+                    matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                    self.clue_board_reshaped = cv2.warpPerspective(warped_image, matrix, (width, height))
+
                     # for x, y in top_left, top_right, bottom_right, bottom_left:
                     #     # print((x, y))
                     #     cv2.circle(self.clue_board_reshaped, (x, y), 10, (255, 0, 0), -1)
-                    # cv2.imshow('Clue board reshaped', self.clue_board_reshaped)
-                    # cv2.waitKey(1)
+                    cv2.imshow('Message reshaped', self.clue_board_reshaped)
+                    cv2.waitKey(1)
 
                     # self.clue_board_detected = True
 
