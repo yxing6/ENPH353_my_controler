@@ -199,7 +199,20 @@ class Drive:
             approx_corners = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
             if len(approx_corners) == 4:
                 x, y, w, h = cv2.boundingRect(contour)
+
                 if w > 150 and h > 100 and 1.5 < w/h < 2.5:
+
+                    # Reshape and find the centroid of them
+                    points = approx_corners.reshape(4, 2)
+                    centroid = np.mean(points, axis=0)
+
+                    # top as a subset of points that have a y-coordinate less than the y-coordinate of the centroid
+                    top = points[np.where(points[:, 1] < centroid[1])]
+                    bottom = points[np.where(points[:, 1] >= centroid[1])]
+                    top_left = top[np.argmin(top[:, 0])]  # find the min x in top two points as top_left
+                    top_right = top[np.argmax(top[:, 0])]  # find the max x in top two points as top_right
+                    bottom_left = bottom[np.argmin(bottom[:, 0])]  # find the min x in bottom two points as bottom_left
+                    bottom_right = bottom[np.argmax(bottom[:, 0])]  # find the max x in bottom two points as bottom_right
 
                     # top_left = (x, y)
                     # top_right = (x + w, y)
@@ -218,13 +231,28 @@ class Drive:
 
                     # print("width is: ", w)
                     # print("height is: ", h)
-                    img = cv2.rectangle(roi, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-                    cv2.imshow('ROI', img)
-                    cv2.waitKey(1)
+                    # img = cv2.rectangle(roi, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    # cv2.imshow('rectangle', img)
+                    # cv2.waitKey(1)
+                    # top_left = approx_corners[0]
+                    # top_right = approx_corners[1]
+                    # bottom_right = approx_corners[2]
+                    # bottom_left = approx_corners[3]
 
                     self.clue_board_raw = roi[y:y + h, x:x + w]
                     cv2.imshow('Clue board RAW', self.clue_board_raw)
+                    cv2.waitKey(1)
+
+                    # First perspective transform
+                    src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
+                    width, height = 600, 400
+                    dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
+                    # Compute the perspective transform matrix
+                    matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+
+                    # Apply the perspective transformation
+                    warped_image = cv2.warpPerspective(roi, matrix, (width, height))
+                    cv2.imshow('Clue board warped', warped_image)
                     cv2.waitKey(1)
 
                     # Apply Harris Corner Detector
@@ -237,32 +265,21 @@ class Drive:
                     # good_corners = 0.01 * harris_corners.max()
                     # print("number of corners: ", good_corners.shape)
 
-                    # Reshape and find the centroid of them
-                    points = approx_corners.reshape(4, 2)
-                    centroid = np.mean(points, axis=0)
 
-                    # top as a subset of points that have a y-coordinate less than the y-coordinate of the centroid
-                    top = points[np.where(points[:, 1] < centroid[1])]
-                    bottom = points[np.where(points[:, 1] >= centroid[1])]
-                    top_left = top[np.argmin(top[:, 0])]  # find the min x in top two points as top_left
-                    top_right = top[np.argmax(top[:, 0])]  # find the max x in top two points as top_right
-                    bottom_left = bottom[np.argmin(bottom[:, 0])]  # find the min x in bottom two points as bottom_left
-                    bottom_right = bottom[np.argmax(bottom[:, 0])]  # find the max x in bottom two points as bottom_right
+                    # # perspective transform the clue_board
+                    # src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
+                    # width, height = 600, 400
+                    # dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
+                    # matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                    # self.clue_board_reshaped = cv2.warpPerspective(self.clue_board_raw, matrix, (width, height))
+                    #
+                    # for x, y in top_left, top_right, bottom_right, bottom_left:
+                    #     # print((x, y))
+                    #     cv2.circle(self.clue_board_reshaped, (x, y), 10, (255, 0, 0), -1)
+                    # cv2.imshow('Clue board reshaped', self.clue_board_reshaped)
+                    # cv2.waitKey(1)
 
-                    # perspective transform the clue_board
-                    src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
-                    width, height = 600, 400
-                    dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
-                    matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                    self.clue_board_reshaped = cv2.warpPerspective(self.clue_board_raw, matrix, (width, height))
-
-                    for x, y in top_left, top_right, bottom_right, bottom_left:
-                        # print((x, y))
-                        cv2.circle(self.clue_board_reshaped, (x, y), 10, (255, 0, 0), -1)
-                    cv2.imshow('Clue board reshaped', self.clue_board_reshaped)
-                    cv2.waitKey(1)
-
-                    self.clue_board_detected = True
+                    # self.clue_board_detected = True
 
     def SIFT_image(self):
 
