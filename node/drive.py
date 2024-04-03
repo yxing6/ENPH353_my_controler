@@ -39,9 +39,10 @@ class Drive:
         self.camera_image = None
         self.clue_board_detected = False
         self.clue_board_raw = None
+        self.clue_board_reshaped = None
 
         # read in the fizz gear for SIFT
-        gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board.png"
+        gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
         self.gear_image = cv2.imread(gear_path)
         self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
 
@@ -65,8 +66,8 @@ class Drive:
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
         self.error_threshold = 20  # drive with different linear speed wrt this error_theshold
-        self.linear_val_max = 0.3  # drive fast when error is small
-        self.linear_val_min = 0.1  # drive slow when error is small
+        self.linear_val_max = 0.2  # drive fast when error is small
+        self.linear_val_min = 0.05  # drive slow when error is small
         self.mid_x = 0.0  # center of the frame initialized to be 0, updated at each find_middle function call
 
         self.timer = None
@@ -195,21 +196,73 @@ class Drive:
         # Filter contours to find square-like shapes
         for contour in contours:
             perimeter = cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
-            if len(approx) == 4:
+            approx_corners = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
+            if len(approx_corners) == 4:
                 x, y, w, h = cv2.boundingRect(contour)
-                if w > 200 and h > 150 and 1.5 < w/h < 2.5:
-                    print("width is: ", w)
-                    print("height is: ", h)
+                if w > 150 and h > 100 and 1.5 < w/h < 2.5:
+
+                    # top_left = (x, y)
+                    # top_right = (x + w, y)
+                    # bottom_left = (x, y + h)
+                    # bottom_right = (x + w, y + h)
+                    #
+                    # radius = 5  # Radius of the circles
+                    # thickness = 2  # Thickness of the circle outline
+                    # color = (0, 255, 0)  # Color of the circles (in BGR format)
+                    #
+                    # # Draw circles at each corner point
+                    # cv2.circle(roi, top_left, radius, color, thickness)
+                    # cv2.circle(roi, top_right, radius, color, thickness)
+                    # cv2.circle(roi, bottom_left, radius, color, thickness)
+                    # cv2.circle(roi, bottom_right, radius, color, thickness)
+
+                    # print("width is: ", w)
+                    # print("height is: ", h)
                     img = cv2.rectangle(roi, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    # cv2.imshow('Blue Square Detection', img)
-                    # cv2.waitKey(1)
+
+                    cv2.imshow('ROI', img)
+                    cv2.waitKey(1)
+
+                    self.clue_board_raw = roi[y:y + h, x:x + w]
+                    cv2.imshow('Clue board RAW', self.clue_board_raw)
+                    cv2.waitKey(1)
+
+                    # Apply Harris Corner Detector
+
+                    # gray = cv2.cvtColor(self.clue_board_raw, cv2.COLOR_BGR2GRAY)
+                    # block_size = 5
+                    # aperture_size = 5
+                    # k = 0.1
+                    # harris_corners = cv2.cornerHarris(gray, block_size, aperture_size, k)
+                    # good_corners = 0.01 * harris_corners.max()
+                    # print("number of corners: ", good_corners.shape)
+
+                    # Reshape and find the centroid of them
+                    points = approx_corners.reshape(4, 2)
+                    centroid = np.mean(points, axis=0)
+
+                    # top as a subset of points that have a y-coordinate less than the y-coordinate of the centroid
+                    top = points[np.where(points[:, 1] < centroid[1])]
+                    bottom = points[np.where(points[:, 1] >= centroid[1])]
+                    top_left = top[np.argmin(top[:, 0])]  # find the min x in top two points as top_left
+                    top_right = top[np.argmax(top[:, 0])]  # find the max x in top two points as top_right
+                    bottom_left = bottom[np.argmin(bottom[:, 0])]  # find the min x in bottom two points as bottom_left
+                    bottom_right = bottom[np.argmax(bottom[:, 0])]  # find the max x in bottom two points as bottom_right
+
+                    # perspective transform the clue_board
+                    src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
+                    width, height = 600, 400
+                    dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
+                    matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                    self.clue_board_reshaped = cv2.warpPerspective(self.clue_board_raw, matrix, (width, height))
+
+                    for x, y in top_left, top_right, bottom_right, bottom_left:
+                        # print((x, y))
+                        cv2.circle(self.clue_board_reshaped, (x, y), 10, (255, 0, 0), -1)
+                    cv2.imshow('Clue board reshaped', self.clue_board_reshaped)
+                    cv2.waitKey(1)
 
                     self.clue_board_detected = True
-
-                    # Display the result
-                    self.clue_board_raw = roi[y:y + h, x:x + w]
-                    cv2.imshow('Blue Square RAW', self.clue_board_raw)
 
     def SIFT_image(self):
 
@@ -253,10 +306,44 @@ class Drive:
         self.clue_board_detected = False
 
     def reshape_image(self):
+
         gray = cv2.cvtColor(self.clue_board_raw, cv2.COLOR_BGR2GRAY)
-        ret, binary = cv2.threshold(gray, 90, 255, cv2.THRESH_BINARY)
-        cv2.imshow("binary clue board", binary)
-        cv2.waitKey(1)
+        ret, binary = cv2.threshold(gray, 70, 255, cv2.THRESH_BINARY)
+        # Find contours in the thresholded image
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Filter the contours based on their area to get the largest contour
+        # largest_contour = max(contours, key=cv2.contourArea)
+
+        for contour in contours:
+            perimeter = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
+            if len(approx) == 4:
+                x, y, w, h = cv2.boundingRect(contour)
+                if w > 200 and h > 150 and 1.5 < w/h < 2.5:
+                    print("width is: ", w)
+                    print("height is: ", h)
+                    img = cv2.rectangle(self.clue_board_raw, (x, y), (x + w, y + h), (0, 0, 255), 4)
+                    cv2.imshow('find contour of clue board', img)
+        # Find the bounding box of the largest contour
+        # x, y, w, h = cv2.boundingRect(largest_contour)
+
+        # # Extract the four corners of the bounding box
+        # top_left = (x, y)
+        # top_right = (x + w, y)
+        # bottom_left = (x, y + h)
+        # bottom_right = (x + w, y + h)
+        #
+        # # Draw circles at the corners (optional)
+        # cv2.circle(self.clue_board_raw, top_left, 5, (0, 0, 255), -1)
+        # cv2.circle(self.clue_board_raw, top_right, 5, (0, 0, 255), -1)
+        # cv2.circle(self.clue_board_raw, bottom_left, 5, (0, 0, 255), -1)
+        # cv2.circle(self.clue_board_raw, bottom_right, 5, (0, 0, 255), -1)
+
+        # cv2.imshow("find contour of clue board", self.clue_board_raw)
+        # cv2.waitKey(1)
+
+        self.clue_board_detected = False
 
 
 def main():
