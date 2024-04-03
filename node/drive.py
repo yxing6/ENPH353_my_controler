@@ -89,6 +89,12 @@ class Drive:
         slow_twist.linear.x = slow_twist.linear.x / 2
         return slow_twist
 
+    def drive_straight(self):
+        twist_msg = Twist()
+        twist_msg.linear.x = 0.4
+        twist_msg.angular.z = 0
+        return twist_msg
+
     def image_callback(self, data):
 
         # process the scribed image from camera in openCV 
@@ -176,22 +182,22 @@ class Drive:
 
     def clue_board_detection(self):
 
+        # only processing the lower portion of the camera view
         height, width, _ = self.camera_image.shape
         roi = self.camera_image[int(height/2.5):, :]
 
+        # change it to HSV format for better blue detection
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
         # cv2.imshow('Blue Square Detection', hsv)
         # cv2.waitKey(1)
 
-        # Define range of blue color in HSV
+        # Define range of blue color in HSV and threshold the HSV image to get only blue colors
         lower_blue = np.array([100, 100, 100])
         upper_blue = np.array([140, 255, 220])
+        blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
 
-        # Threshold the HSV image to get only blue colors
-        mask = cv2.inRange(hsv, lower_blue, upper_blue)
-
-        # Find contours in the thresholded image
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Find contours in the masked image
+        contours, _ = cv2.findContours(blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         # Filter contours to find square-like shapes
         for contour in contours:
@@ -200,67 +206,51 @@ class Drive:
             if len(approx_corners) == 4:
                 x, y, w, h = cv2.boundingRect(contour)
 
+                # I am only interested in the clue board when I am close by,
+                # and it is a clue board only when x dim > y dim
                 if w > 150 and h > 100 and 1.5 < w/h < 2.5:
 
-                    # Reshape and find the centroid of them
+                    # Reshape and find the centroid of four corners
                     points = approx_corners.reshape(4, 2)
                     centroid = np.mean(points, axis=0)
 
                     # top as a subset of points that have a y-coordinate less than the y-coordinate of the centroid
                     top = points[np.where(points[:, 1] < centroid[1])]
+
+                    # bottom as a subset of points that have a y-coord greater than the y-coordinate of the centroid
                     bottom = points[np.where(points[:, 1] >= centroid[1])]
-                    top_left = top[np.argmin(top[:, 0])]  # find the min x in top two points as top_left
-                    top_right = top[np.argmax(top[:, 0])]  # find the max x in top two points as top_right
-                    bottom_left = bottom[np.argmin(bottom[:, 0])]  # find the min x in bottom two points as bottom_left
-                    bottom_right = bottom[np.argmax(bottom[:, 0])]  # find the max x in bottom two points as bottom_right
 
-                    # top_left = (x, y)
-                    # top_right = (x + w, y)
-                    # bottom_left = (x, y + h)
-                    # bottom_right = (x + w, y + h)
-                    #
-                    radius = 5  # Radius of the circles
-                    thickness = 4  # Thickness of the circle outline
-                    color = (0, 255, 0)  # Color of the circles (in BGR format)
+                    # find the min x in top two points as top_left
+                    top_left = top[np.argmin(top[:, 0])]
+                    # find the max x in top two points as top_right
+                    top_right = top[np.argmax(top[:, 0])]
+                    # find the min x in bottom two points as bottom_left
+                    bottom_left = bottom[np.argmin(bottom[:, 0])]
+                    # find the max x in bottom two points as bottom_right
+                    bottom_right = bottom[np.argmax(bottom[:, 0])]
 
-                    # # Draw circles at each corner point
-                    # cv2.circle(roi, top_left, radius, color, thickness)
-                    # cv2.circle(roi, top_right, radius, color, thickness)
-                    # cv2.circle(roi, bottom_left, radius, color, thickness)
-                    # cv2.circle(roi, bottom_right, radius, color, thickness)
-
-                    # print("width is: ", w)
-                    # print("height is: ", h)
-                    # img = cv2.rectangle(roi, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    # cv2.imshow('rectangle', img)
-                    # cv2.waitKey(1)
-                    # top_left = approx_corners[0]
-                    # top_right = approx_corners[1]
-                    # bottom_right = approx_corners[2]
-                    # bottom_left = approx_corners[3]
-
+                    # save the raw clue board
                     self.clue_board_raw = roi[y:y + h, x:x + w]
                     cv2.imshow('Clue board RAW', self.clue_board_raw)
                     cv2.waitKey(1)
 
-                    # First perspective transform
+                    # First, perspective transform this raw clue board into a rectangle shape
                     src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
                     width, height = 600, 400
                     dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
-                    # Compute the perspective transform matrix
+
+                    # Compute the perspective transform matrix and apply the perspective transformation
                     matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                    clue_board_intermittent = cv2.warpPerspective(roi, matrix, (width, height))
+                    # cv2.imshow('Clue board warped', clue_board_intermittent)
+                    # cv2.waitKey(1)
 
-                    # Apply the perspective transformation
-                    warped_image = cv2.warpPerspective(roi, matrix, (width, height))
-                    cv2.imshow('Clue board warped', warped_image)
-                    cv2.waitKey(1)
-
-                    # Apply Harris Corner Detector
+                    # Apply Harris Corner Detector to find the 4 white corner within the clue board
                     block_size = 5
                     aperture_size = 5
-                    k = 0.1
+                    k = 0.2
                     # [:, :, 2] to select all rows, columns, and the elements in the third dimension (the blue channel).
-                    harris_corners = cv2.cornerHarris(warped_image[:, :, 2], block_size, aperture_size, k)
+                    harris_corners = cv2.cornerHarris(clue_board_intermittent[:, :, 2], block_size, aperture_size, k)
 
                     # optimal value as a mask to be used identify strong corners
                     good_corner_mask = 0.01 * harris_corners.max()
@@ -269,11 +259,11 @@ class Drive:
                     corners_mask = np.zeros_like(harris_corners, dtype=np.uint8)
                     corners_mask[harris_corners > good_corner_mask] = 255  # Set strong corners to white (255)
 
-                    # Now, you can use this corners_mask to mask out the corners
-                    masked_warped_image = cv2.bitwise_and(warped_image, warped_image, mask=corners_mask)
-
-                    cv2.imshow('masked', masked_warped_image)
-                    cv2.waitKey(1)
+                    # # use the corners_mask to mask out the corners
+                    # masked_warped_image = cv2.bitwise_and(
+                    #     clue_board_intermittent, clue_board_intermittent, mask=corners_mask)
+                    # cv2.imshow('masked', masked_warped_image)
+                    # cv2.waitKey(1)
 
                     # Find contours in the corners mask
                     contours, _ = cv2.findContours(corners_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -283,9 +273,8 @@ class Drive:
 
                     # Extract corner points from contours
                     for c in contours:
-                        # Find bounding rectangle of the contour
+                        # Find bounding rectangle of the contour and add corners of the rectangle to corner_points list
                         x, y, w, h = cv2.boundingRect(c)
-                        # Add corners of the rectangle to corner_points list
                         corner_points.extend([(x, y), (x + w, y), (x, y + h), (x + w, y + h)])
 
                     # Convert corner_points list to NumPy array
@@ -301,23 +290,23 @@ class Drive:
                     print("Top Right:", top_right)
                     print("Bottom Left:", bottom_left)
                     print("Bottom Right:", bottom_right)
-                    cv2.circle(warped_image, top_left, radius, color, thickness)
-                    cv2.circle(warped_image, top_right, radius, color, thickness)
-                    cv2.circle(warped_image, bottom_left, radius, color, thickness)
-                    cv2.circle(warped_image, bottom_right, radius, color, thickness)
-                    cv2.imshow('corner detected', warped_image)
+
+                    radius = 3  # Radius of the circles
+                    thickness = 4  # Thickness of the circle outline
+                    color = (0, 255, 0)  # Color of the circles (in BGR format)
+                    cv2.circle(clue_board_intermittent, top_left, radius, color, thickness, -1)
+                    cv2.circle(clue_board_intermittent, top_right, radius, color, thickness, -1)
+                    cv2.circle(clue_board_intermittent, bottom_left, radius, color, thickness, -1)
+                    cv2.circle(clue_board_intermittent, bottom_right, radius, color, thickness, -1)
+                    cv2.imshow('corner detected', clue_board_intermittent)
                     cv2.waitKey(1)
 
                     # perspective transform the clue_board
                     src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
-                    width, height = 600, 400
                     dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
                     matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                    self.clue_board_reshaped = cv2.warpPerspective(warped_image, matrix, (width, height))
+                    self.clue_board_reshaped = cv2.warpPerspective(clue_board_intermittent, matrix, (width, height))
 
-                    # for x, y in top_left, top_right, bottom_right, bottom_left:
-                    #     # print((x, y))
-                    #     cv2.circle(self.clue_board_reshaped, (x, y), 10, (255, 0, 0), -1)
                     cv2.imshow('Message reshaped', self.clue_board_reshaped)
                     cv2.waitKey(1)
 
