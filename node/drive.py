@@ -108,7 +108,7 @@ class Drive:
         if not self.clue_board_detected:
             self.clue_board_detection()
         if self.clue_board_detected:
-            self.process_image()
+            self.process_char()
 
         if self.end_not_sent and not self.start_not_sent:
             # if end_not_sent is true and start_not_sent is false
@@ -335,7 +335,7 @@ class Drive:
 
         self.clue_board_detected = False
 
-    def process_image(self):
+    def process_char(self):
 
         self.clue_board_detected = False
         return
