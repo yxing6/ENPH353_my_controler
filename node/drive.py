@@ -37,7 +37,8 @@ class Drive:
         # Create a bridge between ROS and OpenCV
         self.bridge = CvBridge()
         self.camera_image = None
-        self.clue_board_detected = False
+        self.potential_clue_board_detected = False
+        self.real_clue_board_detected = False
         self.clue_board_raw = None
         self.clue_board_reshaped = None
 
@@ -105,12 +106,14 @@ class Drive:
             rospy.logerr(e)
             return
 
-        if not self.clue_board_detected:
+        if not self.potential_clue_board_detected and not self.real_clue_board_detected:
             self.clue_board_detection()
-        if self.clue_board_detected:
+        if self.potential_clue_board_detected:
             dst = self.SIFT_image()
             if dst is not None:
-                self.process_char(dst)
+                self.process_type(dst)
+            else:
+                self.potential_clue_board_detected = False
 
         if self.end_not_sent and not self.start_not_sent:
             # if end_not_sent is true and start_not_sent is false
@@ -208,7 +211,9 @@ class Drive:
 
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
-                if w > 150 and h > 100 and 1.5 < w / h < 2.5:
+                if w > 225 and h > 145 and 1.5 < w / h < 2.5:
+                    print(w)
+                    print(h)
 
                     # Reshape and find the centroid of four corners
                     points = approx_corners.reshape(4, 2)
@@ -294,7 +299,7 @@ class Drive:
                     cv2.imshow('Message reshaped', self.clue_board_reshaped)
                     cv2.waitKey(1)
 
-                    self.clue_board_detected = True
+                    self.potential_clue_board_detected = True
 
     def SIFT_image(self):
 
@@ -336,29 +341,32 @@ class Drive:
                 # 01 for bottom left
                 # 11 for bottom right
                 # 10 for top right
-                # x_00, y_00 = int(dst[0][0][0]), int(dst[0][0][1])
-                # x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
-                #
-                # if x_00 < 10 and y_00 < 10 and x_10 - x_00 > 100:
+                x_00, y_00 = int(dst[0][0][0]), int(dst[0][0][1])
+                x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
 
-                homography_img = cv2.polylines(self.clue_board_reshaped, [np.int32(dst)], True, (0, 0, 255), 4)
-                cv2.imshow("Homography", homography_img)
-                cv2.waitKey(1)
+                # print("x_10 is:", x_10, "x_00 is", x_00, "and diff:", x_10 - x_00)
 
-                # self.clue_board_detected = False
-                return dst
+                if x_10 - x_00 > 100:
 
-    def process_char(self, dst):
+                    homography_img = cv2.polylines(self.clue_board_reshaped, [np.int32(dst)], True, (0, 0, 255), 4)
+                    cv2.imshow("Homography", homography_img)
+                    cv2.waitKey(1)
+
+                    self.real_clue_board_detected = True
+                    return dst
+
+    def process_type(self, dst):
 
         # 00 for top left
         # 01 for bottom left
         # 11 for bottom right
         # 10 for top right
         x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
+        print(x_10, y_10)
 
         clue_type_x0 = x_10
         clue_type_y0 = y_10
-        letter_width = 55
+        letter_width = 60
         letter_height = 120
 
         # Define the regions
@@ -401,9 +409,9 @@ class Drive:
         #     sub_img = self.clue_board_reshaped[y_start:y_start + letter_height, x_start:x_start + letter_width]
         #     sub_images_pts_1.append(sub_img)
 
-        self.clue_board_detected = False
+        self.potential_clue_board_detected = False
+        self.real_clue_board_detected = False
 
-        return
 
 
 def main():
