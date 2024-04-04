@@ -41,26 +41,26 @@ class Drive:
         self.clue_board_raw = None
         self.clue_board_reshaped = None
 
-        # # read in the fizz gear for SIFT
-        # gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
-        # self.gear_image = cv2.imread(gear_path)
-        # self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
-        # # construct a SIFT object
-        # self.sift = cv2.SIFT_create()
-        # # detect the keypoint in the image,
-        # # with mask being None, so every part of the image is being searched
-        # self.keypoint = self.sift.detect(self.gear_grey, None)
-        # # print("the number of key points: ", len(keypoint))
-        # # cv2.imshow("name", self.gear_image)
-        # # cv2.waitKey(3)
-        # # draw the keypoint onto the image, show and save it
-        # # kp = cv2.drawKeypoints(self.gear_grey, self.keypoint, self.gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        # # cv2.imshow("kp", kp)
-        # # cv2.waitKey(3)
-        # # cv2.imwrite('keypoints detected.jpg', kp)
-        #
-        # # calculate the descriptor for each key point
-        # self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
+        # read in the fizz gear for SIFT
+        gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
+        self.gear_image = cv2.imread(gear_path)
+        self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
+        # construct a SIFT object
+        self.sift = cv2.SIFT_create()
+        # detect the keypoint in the image,
+        # with mask being None, so every part of the image is being searched
+        self.keypoint = self.sift.detect(self.gear_grey, None)
+        # print("the number of key points: ", len(keypoint))
+        # cv2.imshow("name", self.gear_image)
+        # cv2.waitKey(3)
+        # draw the keypoint onto the image, show and save it
+        # kp = cv2.drawKeypoints(self.gear_grey, self.keypoint, self.gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        # cv2.imshow("kp", kp)
+        # cv2.waitKey(3)
+        # cv2.imwrite('keypoints detected.jpg', kp)
+
+        # calculate the descriptor for each key point
+        self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
 
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
@@ -108,7 +108,8 @@ class Drive:
         if not self.clue_board_detected:
             self.clue_board_detection()
         if self.clue_board_detected:
-            self.process_char()
+            top_right_x, top_right_y = self.SIFT_image()
+            self.process_char(top_right_x, top_right_y)
 
         if self.end_not_sent and not self.start_not_sent:
             # if end_not_sent is true and start_not_sent is false
@@ -182,7 +183,7 @@ class Drive:
 
         # only processing the lower portion of the camera view
         height, width, _ = self.camera_image.shape
-        roi = self.camera_image[int(height/2.5):, :]
+        roi = self.camera_image[int(height / 2.5):, :]
 
         # change it to HSV format for better blue detection
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
@@ -206,7 +207,7 @@ class Drive:
 
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
-                if w > 150 and h > 100 and 1.5 < w/h < 2.5:
+                if w > 150 and h > 100 and 1.5 < w / h < 2.5:
 
                     # Reshape and find the centroid of four corners
                     points = approx_corners.reshape(4, 2)
@@ -298,7 +299,7 @@ class Drive:
 
         matching_points = 4
 
-        clue_board_grey = cv2.cvtColor(self.clue_board_raw, cv2.COLOR_BGR2GRAY)
+        clue_board_grey = cv2.cvtColor(self.clue_board_reshaped, cv2.COLOR_BGR2GRAY)
         kp_camera, des_camera = self.sift.detectAndCompute(clue_board_grey, None)
 
         # FLANN parameters
@@ -308,36 +309,97 @@ class Drive:
         flann = cv2.FlannBasedMatcher(index_params, search_params)
 
         # return the best 2 matches
-        matches = flann.knnMatch(self.des_gear, des_camera, k=2)
+        if des_camera is not None and len(des_camera) > 2:
+            matches = flann.knnMatch(self.des_gear, des_camera, k=2)
 
-        # Need to draw only good matches, so create a mask
-        homography_mask = []
+            # Need to draw only good matches, so create a mask
+            homography_mask = []
 
-        # ratio test as per Lowe's paper
-        for i, (m, n) in enumerate(matches):
-            if m.distance < 0.7 * n.distance:
-                homography_mask.append(m)
+            # ratio test as per Lowe's paper
+            for i, (m, n) in enumerate(matches):
+                if m.distance < 0.7 * n.distance:
+                    homography_mask.append(m)
 
-        # draw homography in the camera image
-        query_pts = np.float32([self.kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
-        train_pts = np.float32([kp_camera[m.trainIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
-        if len(query_pts) >= matching_points:
-            matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
+            # draw homography in the camera image
+            query_pts = np.float32([self.kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
+            train_pts = np.float32([kp_camera[m.trainIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
+            if len(query_pts) >= matching_points:
+                matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
 
-            # Perspective transform
-            h, w = self.gear_image.shape[0], self.gear_image.shape[1]
-            pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
-            dst = cv2.perspectiveTransform(pts, matrix)
+                # Perspective transform
+                h, w = self.gear_image.shape[0], self.gear_image.shape[1]
+                pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
+                dst = cv2.perspectiveTransform(pts, matrix)
 
-            homography_img = cv2.polylines(self.clue_board_raw, [np.int32(dst)], True, (0, 0, 255), 4)
-            cv2.imshow("Homography", homography_img)
-            cv2.waitKey(1)
+                # for point in dst:
+                #     x, y = point[0]
+                #     print("Point:", (x, y))
+
+                top_right_point_x, top_right_point_y = dst[3][0]
+                print("top right at x, y", top_right_point_x, top_right_point_y)
+                #
+                # print(dst.shape)
+                # print(int(dst[0, 0, 0], int(dst[]))
+                # print(int(dst[1]))
+                # print(int(dst[2]))
+                # print(int(dst[3]))
+
+                homography_img = cv2.polylines(self.clue_board_reshaped, [np.int32(dst)], True, (0, 0, 255), 4)
+                cv2.imshow("Homography", homography_img)
+                cv2.waitKey(1)
+
+                # self.clue_board_detected = False
+                return int(top_right_point_x), int(top_right_point_y)
+
+    def process_char(self, top_right_x, top_right_y):
+
+        clue_type_x0 = top_right_x
+        clue_type_y0 = top_right_y
+        letter_width = 55
+        letter_height = 120
+
+        # Define the regions
+        # clue_type = np.array([(200, 40), (200, 40 + letter_height),
+        #                      (200 + letter_width, 40 + letter_height), (200 + letter_width, 40)], np.int32)
+        clue_type_top_left = (clue_type_x0, clue_type_y0)
+        clue_type_bottom_right = (clue_type_x0 + letter_width, clue_type_y0 + letter_height)
+
+        color = (0, 255, 0)  # Green color in BGR format
+        thickness = 2
+        cv2.rectangle(self.clue_board_reshaped, clue_type_top_left, clue_type_bottom_right, color, thickness)
+        cv2.imshow("Detect char", self.clue_board_reshaped)
+
+        # # clue_type = np.array([[200, 40], [200, 40 + letter_height], [200 + 6 * letter_width, 40 + letter_height],
+        # #                       [200 + 6 * letter_width, 40]], np.int32)
+        # pts_1 = np.array([[30, 260], [30, 260 + letter_height], [30 + 12 * letter_width, 260 + letter_height],
+        #                   [30 + 12 * letter_width, 260]], np.int32)
+        #
+        # # Split clue_type into 6 images
+        # sub_images_pts_0 = []
+        # for i in range(1):
+        #     x_start = clue_type[0][0] + i * letter_width
+        #     y_start = clue_type[0][1]
+        #
+        #     top_left = (x_start, y_start)
+        #     top_right = (x_start + letter_width, y_start)
+        #     bottom_left = (x_start, y_start + letter_height)
+        #     bottom_right = (x_start + letter_width, y_start + letter_height)
+
+            # sub_img = self.clue_board_reshaped[y_start:y_start + letter_height, x_start:x_start + letter_width]
+            # sub_images_pts_0.append(sub_img)
+
+            # Draw the rectangle on the image
+
+        # # Split pts_1 into 12 images
+        # sub_images_pts_1 = []
+        # for i in range(12):
+        #     x_start = pts_1[0][0] + i * letter_width
+        #     y_start = pts_1[0][1]
+        #     sub_img = self.clue_board_reshaped[y_start:y_start + letter_height, x_start:x_start + letter_width]
+        #     sub_images_pts_1.append(sub_img)
 
         self.clue_board_detected = False
 
-    def process_char(self):
-
-        self.clue_board_detected = False
         return
 
 
