@@ -111,7 +111,8 @@ class Drive:
         if self.potential_clue_board_detected:
             dst = self.SIFT_image()
             if dst is not None:
-                self.process_type(dst)
+                self.parse_type(dst)
+                self.parse_value(dst)
             else:
                 self.potential_clue_board_detected = False
 
@@ -168,7 +169,7 @@ class Drive:
         start_message = string_message.format(start_msg)
         stop_message = string_message.format(stop_msg)
 
-        duration = 100
+        duration = 120
         sim_time = data.clock.secs
 
         if self.start_not_sent:
@@ -349,69 +350,71 @@ class Drive:
                 if x_10 - x_00 > 100:
 
                     homography_img = cv2.polylines(self.clue_board_reshaped, [np.int32(dst)], True, (0, 0, 255), 4)
-                    cv2.imshow("Homography", homography_img)
-                    cv2.waitKey(1)
+                    # cv2.imshow("Homography", homography_img)
+                    # cv2.waitKey(1)
 
                     self.real_clue_board_detected = True
                     return dst
 
-    def process_type(self, dst):
+    def parse_type(self, dst):
 
         # 00 for top left
         # 01 for bottom left
         # 11 for bottom right
         # 10 for top right
         x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
-        print(x_10, y_10)
+        # print(x_10, y_10)
 
         clue_type_x0 = x_10
         clue_type_y0 = y_10
         letter_width = 60
         letter_height = 120
 
-        # Define the regions
-        # clue_type = np.array([(200, 40), (200, 40 + letter_height),
-        #                      (200 + letter_width, 40 + letter_height), (200 + letter_width, 40)], np.int32)
         clue_type_top_left = (clue_type_x0, clue_type_y0)
         clue_type_bottom_right = (clue_type_x0 + letter_width, clue_type_y0 + letter_height)
 
         color = (0, 255, 0)  # Green color in BGR format
         thickness = 2
         cv2.rectangle(self.clue_board_reshaped, clue_type_top_left, clue_type_bottom_right, color, thickness)
-        cv2.imshow("Detect char", self.clue_board_reshaped)
-
-        # # clue_type = np.array([[200, 40], [200, 40 + letter_height], [200 + 6 * letter_width, 40 + letter_height],
-        # #                       [200 + 6 * letter_width, 40]], np.int32)
-        # pts_1 = np.array([[30, 260], [30, 260 + letter_height], [30 + 12 * letter_width, 260 + letter_height],
-        #                   [30 + 12 * letter_width, 260]], np.int32)
-        #
-        # # Split clue_type into 6 images
-        # sub_images_pts_0 = []
-        # for i in range(1):
-        #     x_start = clue_type[0][0] + i * letter_width
-        #     y_start = clue_type[0][1]
-        #
-        #     top_left = (x_start, y_start)
-        #     top_right = (x_start + letter_width, y_start)
-        #     bottom_left = (x_start, y_start + letter_height)
-        #     bottom_right = (x_start + letter_width, y_start + letter_height)
-
-            # sub_img = self.clue_board_reshaped[y_start:y_start + letter_height, x_start:x_start + letter_width]
-            # sub_images_pts_0.append(sub_img)
-
-            # Draw the rectangle on the image
-
-        # # Split pts_1 into 12 images
-        # sub_images_pts_1 = []
-        # for i in range(12):
-        #     x_start = pts_1[0][0] + i * letter_width
-        #     y_start = pts_1[0][1]
-        #     sub_img = self.clue_board_reshaped[y_start:y_start + letter_height, x_start:x_start + letter_width]
-        #     sub_images_pts_1.append(sub_img)
+        # cv2.imshow("Detect type", self.clue_board_reshaped)
 
         self.potential_clue_board_detected = False
         self.real_clue_board_detected = False
 
+    def parse_value(self, dst):
+
+        # 00 for top left
+        # 01 for bottom left
+        # 11 for bottom right
+        # 10 for top right
+        x_01, y_01 = int(dst[1][0][0]), int(dst[1][0][1])
+        # print(x_10, y_10)
+
+        clue_value_x0 = x_01 + 25
+        clue_value_y0 = y_01 + 40
+        letter_width = 45
+        letter_height = 120
+
+        # clue_value_top_left = (clue_value_x0, clue_value_y0)
+        # clue_value_bottom_right = (clue_value_x0 + letter_width, clue_value_y0 + letter_height)
+
+        color = (255, 0, 0)
+        thickness = 2
+        # cv2.rectangle(self.clue_board_reshaped, clue_value_top_left, clue_value_bottom_right, color, thickness)
+        # cv2.imshow("Detect value", self.clue_board_reshaped)
+
+        for i in range(12):
+            x_start = clue_value_x0 + i * letter_width
+            y_start = clue_value_y0
+            clue_char_top_left = (x_start, y_start)
+            clue_char_bottom_right = (x_start + letter_width, y_start + letter_height)
+            cv2.rectangle(self.clue_board_reshaped, clue_char_top_left, clue_char_bottom_right, color, thickness)
+
+        cv2.imshow("Detect value", self.clue_board_reshaped)
+        cv2.waitKey(1)
+
+        self.potential_clue_board_detected = False
+        self.real_clue_board_detected = False
 
 
 def main():
