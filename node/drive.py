@@ -108,8 +108,9 @@ class Drive:
         if not self.clue_board_detected:
             self.clue_board_detection()
         if self.clue_board_detected:
-            top_right_x, top_right_y = self.SIFT_image()
-            self.process_char(top_right_x, top_right_y)
+            dst = self.SIFT_image()
+            if dst is not None:
+                self.process_char(dst)
 
         if self.end_not_sent and not self.start_not_sent:
             # if end_not_sent is true and start_not_sent is false
@@ -331,30 +332,32 @@ class Drive:
                 pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
                 dst = cv2.perspectiveTransform(pts, matrix)
 
-                # for point in dst:
-                #     x, y = point[0]
-                #     print("Point:", (x, y))
-
-                top_right_point_x, top_right_point_y = dst[3][0]
-                print("top right at x, y", top_right_point_x, top_right_point_y)
+                # 00 for top left
+                # 01 for bottom left
+                # 11 for bottom right
+                # 10 for top right
+                # x_00, y_00 = int(dst[0][0][0]), int(dst[0][0][1])
+                # x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
                 #
-                # print(dst.shape)
-                # print(int(dst[0, 0, 0], int(dst[]))
-                # print(int(dst[1]))
-                # print(int(dst[2]))
-                # print(int(dst[3]))
+                # if x_00 < 10 and y_00 < 10 and x_10 - x_00 > 100:
 
                 homography_img = cv2.polylines(self.clue_board_reshaped, [np.int32(dst)], True, (0, 0, 255), 4)
                 cv2.imshow("Homography", homography_img)
                 cv2.waitKey(1)
 
                 # self.clue_board_detected = False
-                return int(top_right_point_x), int(top_right_point_y)
+                return dst
 
-    def process_char(self, top_right_x, top_right_y):
+    def process_char(self, dst):
 
-        clue_type_x0 = top_right_x
-        clue_type_y0 = top_right_y
+        # 00 for top left
+        # 01 for bottom left
+        # 11 for bottom right
+        # 10 for top right
+        x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
+
+        clue_type_x0 = x_10
+        clue_type_y0 = y_10
         letter_width = 55
         letter_height = 120
 
