@@ -8,6 +8,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import String
 from rosgraph_msgs.msg import Clock
+import tensorflow as tf
 
 
 class Drive:
@@ -62,6 +63,9 @@ class Drive:
 
         # calculate the descriptor for each key point
         self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
+
+        # import the CNN text prediction model
+        self.model = tf.keras.models.load_model("/home/fizzer/ros_ws/src/my_controller/node/character_prediction.h5")
 
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
@@ -152,6 +156,7 @@ class Drive:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         ret, binary = cv2.threshold(gray, 90, 255, cv2.THRESH_BINARY)
         last_row = binary[-1, :]
+        # print(last_row)
 
         if np.any(last_row == 0):
             last_list = last_row.tolist()
@@ -348,7 +353,6 @@ class Drive:
                 # print("x_10 is:", x_10, "x_00 is", x_00, "and diff:", x_10 - x_00)
 
                 if x_10 - x_00 > 100:
-
                     homography_img = cv2.polylines(self.clue_board_reshaped, [np.int32(dst)], True, (0, 0, 255), 4)
                     # cv2.imshow("Homography", homography_img)
                     # cv2.waitKey(1)
@@ -377,6 +381,11 @@ class Drive:
         thickness = 2
         cv2.rectangle(self.clue_board_reshaped, clue_type_top_left, clue_type_bottom_right, color, thickness)
         # cv2.imshow("Detect type", self.clue_board_reshaped)
+
+        # roi = self.camera_image[int(height / 2.5):, :]
+        clue_type_img = self.clue_board_reshaped[clue_type_y0:clue_type_y0 + letter_height, clue_type_x0:clue_type_x0 + letter_width]
+
+        # clue_type_p = self.model.predict(img_aug)[0]
 
         self.potential_clue_board_detected = False
         self.real_clue_board_detected = False
@@ -415,6 +424,35 @@ class Drive:
 
         self.potential_clue_board_detected = False
         self.real_clue_board_detected = False
+
+    # map the character to int by their unicode code representation
+    # A - Z as 0 - 25 and 0 - 9 as 26 - 35
+    def char_to_int(self, my_char):
+        if 'A' <= my_char <= 'Z':
+            return ord(my_char) - ord('A')
+        elif '0' <= my_char <= '9':
+            return 26 + ord(my_char) - ord('0')
+        else:
+            raise ValueError(f"Invalid character: {my_char}")
+
+    # map the int to char by their unicode code representation
+    # A - Z as 0 - 25 and 0 - 9 as 26 - 35
+    def int_to_char(self, my_int):
+        if 0 <= my_int <= 25:
+            return chr(my_int + ord('A'))
+        elif 26 <= my_int <= 35:
+            return chr(my_int - 26 + ord('0'))
+        else:
+            raise ValueError(f"Invalid character: {my_int}")
+
+    def predict_clue_type(self, images):
+        y_predicts = []
+        for img in images:
+            img_aug = np.expand_dims(img / 255.0, axis=0)
+            y_p = self.model.predict(img_aug)[0]
+            y_predicts.append(self.int_to_char(np.argmax(y_p)))
+            print("the prediction is:", y_predicts, type(y_predicts))
+        return y_predicts
 
 
 def main():
