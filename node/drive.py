@@ -115,8 +115,10 @@ class Drive:
         if self.potential_clue_board_detected:
             dst = self.SIFT_image()
             if dst is not None:
-                self.parse_type(dst)
-                self.parse_value(dst)
+                clue_type_predict = self.parse_type(dst)
+                print("the clue_type prediction is :", clue_type_predict)
+                clue_value_predict = self.parse_value(dst)
+                print("the clue_value prediction string is :", clue_value_predict)
             else:
                 self.potential_clue_board_detected = False
 
@@ -381,19 +383,16 @@ class Drive:
         thickness = 2
         cv2.rectangle(self.clue_board_reshaped, clue_type_top_left, clue_type_bottom_right, color, thickness)
         # cv2.imshow("Detect type", self.clue_board_reshaped)
+        # cv2.waitKey(1)
 
-        # roi = self.camera_image[int(height / 2.5):, :]
         clue_type_img = self.clue_board_reshaped[clue_type_y0:clue_type_y0 + letter_height, clue_type_x0:clue_type_x0 + letter_width]
-        resized_img = cv2.resize(clue_type_img, (100, 140), interpolation=cv2.INTER_LINEAR)
-        img = np.expand_dims(resized_img, axis=0)
 
-        clue_type_p = self.model.predict(img)[0]
-        p = self.int_to_char(np.argmax(clue_type_p))
-
-        print("pred: ", p)
+        clue_type_predict = self.predict_clue([clue_type_img])
 
         self.potential_clue_board_detected = False
         self.real_clue_board_detected = False
+
+        return clue_type_predict
 
     def parse_value(self, dst):
 
@@ -417,18 +416,25 @@ class Drive:
         # cv2.rectangle(self.clue_board_reshaped, clue_value_top_left, clue_value_bottom_right, color, thickness)
         # cv2.imshow("Detect value", self.clue_board_reshaped)
 
+        clue_value_img_list = []
         for i in range(12):
             x_start = clue_value_x0 + i * letter_width
             y_start = clue_value_y0
             clue_char_top_left = (x_start, y_start)
             clue_char_bottom_right = (x_start + letter_width, y_start + letter_height)
             cv2.rectangle(self.clue_board_reshaped, clue_char_top_left, clue_char_bottom_right, color, thickness)
+            clue_char_img = self.clue_board_reshaped[y_start:y_start + letter_height, x_start:x_start + letter_width]
+            clue_value_img_list.append(clue_char_img)
 
         cv2.imshow("Detect value", self.clue_board_reshaped)
         cv2.waitKey(1)
 
+        clue_type_predict = self.predict_clue(clue_value_img_list)
+
         self.potential_clue_board_detected = False
         self.real_clue_board_detected = False
+
+        return clue_type_predict
 
     # map the character to int by their unicode code representation
     # A - Z as 0 - 25 and 0 - 9 as 26 - 35
@@ -451,16 +457,18 @@ class Drive:
             raise ValueError(f"Invalid character: {my_int}")
 
     def predict_clue(self, images):
-        y_predicts = []
+        y_predicts = list()
         for img in images:
-            resized_img = cv2.resize(img, (100, 140), interpolation=cv2.INTER_LINEAR)
-            img_reshape = cv2.resize(img, (100, 140), interpolation=cv2.INTER_LINEAR)
-            img_aug = np.expand_dims(img_reshape / 255.0, axis=0)
-            y_p = self.model.predict(img_aug)[0]
-            y_predicts.append(self.int_to_char(np.argmax(y_p)))
-            print("the prediction is:", y_predicts, type(y_predicts))
-        return y_predicts
+            try:
+                img_reshape = cv2.resize(img, (100, 140), interpolation=cv2.INTER_LINEAR)
+                img_aug = np.expand_dims(img_reshape / 255.0, axis=0)
+                y_p = self.model.predict(img_aug)[0]
+                y_predicts.append(self.int_to_char(np.argmax(y_p)))
+            except cv2.error as e:
+                # print("OpenCV error:", e)
+                y_predicts.append(' ')  # Append empty string to indicate failure
 
+        return y_predicts
 
 def main():
     try:
