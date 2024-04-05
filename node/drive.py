@@ -369,9 +369,9 @@ class Drive:
         x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
         # print(x_10, y_10)
 
-        clue_type_x0 = x_10
+        clue_type_x0 = x_10 + 15
         clue_type_y0 = y_10
-        letter_width = 60
+        letter_width = 45
         letter_height = 120
 
         clue_type_top_left = (clue_type_x0, clue_type_y0)
@@ -384,8 +384,13 @@ class Drive:
 
         # roi = self.camera_image[int(height / 2.5):, :]
         clue_type_img = self.clue_board_reshaped[clue_type_y0:clue_type_y0 + letter_height, clue_type_x0:clue_type_x0 + letter_width]
+        resized_img = cv2.resize(clue_type_img, (100, 140), interpolation=cv2.INTER_LINEAR)
+        img = np.expand_dims(resized_img, axis=0)
 
-        # clue_type_p = self.model.predict(img_aug)[0]
+        clue_type_p = self.model.predict(img)[0]
+        p = self.int_to_char(np.argmax(clue_type_p))
+
+        print("pred: ", p)
 
         self.potential_clue_board_detected = False
         self.real_clue_board_detected = False
@@ -399,9 +404,9 @@ class Drive:
         x_01, y_01 = int(dst[1][0][0]), int(dst[1][0][1])
         # print(x_10, y_10)
 
-        clue_value_x0 = x_01 + 25
+        clue_value_x0 = x_01 + 20
         clue_value_y0 = y_01 + 40
-        letter_width = 45
+        letter_width = 50
         letter_height = 120
 
         # clue_value_top_left = (clue_value_x0, clue_value_y0)
@@ -445,10 +450,12 @@ class Drive:
         else:
             raise ValueError(f"Invalid character: {my_int}")
 
-    def predict_clue_type(self, images):
+    def predict_clue(self, images):
         y_predicts = []
         for img in images:
-            img_aug = np.expand_dims(img / 255.0, axis=0)
+            resized_img = cv2.resize(img, (100, 140), interpolation=cv2.INTER_LINEAR)
+            img_reshape = cv2.resize(img, (100, 140), interpolation=cv2.INTER_LINEAR)
+            img_aug = np.expand_dims(img_reshape / 255.0, axis=0)
             y_p = self.model.predict(img_aug)[0]
             y_predicts.append(self.int_to_char(np.argmax(y_p)))
             print("the prediction is:", y_predicts, type(y_predicts))
