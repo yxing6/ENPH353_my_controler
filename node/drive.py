@@ -195,6 +195,29 @@ class Drive:
                 self.score_track_pub.publish(stop_message)
                 self.end_not_sent = False
 
+    def separate_corners(self, approx_corners):
+
+        # Reshape and find the centroid of four corners
+        points = approx_corners.reshape(4, 2)
+        centroid = np.mean(points, axis=0)
+
+        # top as a subset of points that have a y-coordinate less than the y-coordinate of the centroid
+        top = points[np.where(points[:, 1] < centroid[1])]
+
+        # bottom as a subset of points that have a y-coord greater than the y-coordinate of the centroid
+        bottom = points[np.where(points[:, 1] >= centroid[1])]
+
+        # find the min x in top two points as top_left
+        top_left = top[np.argmin(top[:, 0])]
+        # find the max x in top two points as top_right
+        top_right = top[np.argmax(top[:, 0])]
+        # find the min x in bottom two points as bottom_left
+        bottom_left = bottom[np.argmin(bottom[:, 0])]
+        # find the max x in bottom two points as bottom_right
+        bottom_right = bottom[np.argmax(bottom[:, 0])]
+
+        return [top_left, top_right, bottom_right, bottom_left]
+
     def detect_blue_board(self):
 
         # only processing the lower portion of the camera view
@@ -223,35 +246,13 @@ class Drive:
 
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
-                if w > 225 and h > 145 and 1.5 < w / h < 2.5:
-                    print(w)
-                    print(h)
+                if w > 225 and h > 145 and 1.0 < w / h < 2.0:
 
-                    # Reshape and find the centroid of four corners
-                    points = approx_corners.reshape(4, 2)
-                    centroid = np.mean(points, axis=0)
-
-                    # top as a subset of points that have a y-coordinate less than the y-coordinate of the centroid
-                    top = points[np.where(points[:, 1] < centroid[1])]
-
-                    # bottom as a subset of points that have a y-coord greater than the y-coordinate of the centroid
-                    bottom = points[np.where(points[:, 1] >= centroid[1])]
-
-                    # find the min x in top two points as top_left
-                    top_left = top[np.argmin(top[:, 0])]
-                    # find the max x in top two points as top_right
-                    top_right = top[np.argmax(top[:, 0])]
-                    # find the min x in bottom two points as bottom_left
-                    bottom_left = bottom[np.argmin(bottom[:, 0])]
-                    # find the max x in bottom two points as bottom_right
-                    bottom_right = bottom[np.argmax(bottom[:, 0])]
-
-                    # save the raw clue board
-                    clue_board_raw = roi[y:y + h, x:x + w]
-
+                    # # save the raw clue board
+                    # clue_board_raw = roi[y:y + h, x:x + w]
                     # First, perspective transform this raw clue board into a rectangle shape
-                    src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
-                    width, height = 600, 400
+                    src_pts = np.float32(self.separate_corners(approx_corners))
+                    width, height = 780, 460
                     dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
 
                     # Compute the perspective transform matrix and apply the perspective transformation
@@ -264,60 +265,111 @@ class Drive:
 
     def detect_white_board(self):
 
-        # Apply Harris Corner Detector to find the 4 white corner within the clue board
-        block_size = 5
-        aperture_size = 5
-        k = 0.08
-        # [:, :, 2] to select all rows, columns, and the elements in the third dimension (the blue channel).
-        harris_corners = cv2.cornerHarris(self.blue_board[:, :, 2], block_size, aperture_size, k)
+        # # only processing the lower portion of the camera view
+        # height, width, _ = self.camera_image.shape
+        # roi = self.camera_image[int(height / 2.5):, :]
 
-        # Dilate the corner points to enhance them
-        harris_corners = cv2.dilate(harris_corners, None)
+        # change it to HSV format for better blue detection
+        hsv = cv2.cvtColor(self.blue_board, cv2.COLOR_BGR2HSV)
+        # cv2.imshow('Blue Square Detection', hsv)
+        # cv2.waitKey(1)
 
-        # optimal value as a mask to be used identify strong corners
-        good_corner_mask = 0.01 * harris_corners.max()
+        # Define range of blue color in HSV and threshold the HSV image to get only blue colors
+        lower_blue = np.array([100, 100, 100])
+        upper_blue = np.array([140, 255, 220])
+        blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+        inverse_mask = cv2.bitwise_not(blue_mask)
+        contours, _ = cv2.findContours(inverse_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Threshold the Harris corner response values to identify strong corners
-        corners_mask = np.zeros_like(harris_corners, dtype=np.uint8)
-        corners_mask[harris_corners > good_corner_mask] = 255  # Set strong corners to white (255)
+        # img = cv2.imread("/home/fizzer/ros_ws/src/2023_competition/enph353/enph353_gazebo/media/materials/textures/license_plates/plate_4.png")
+        # print("vlue has size: ", img.shape)
 
-        # use the corners_mask to mask out the corners
-        masked_warped_image = cv2.bitwise_and(
-            self.blue_board, self.blue_board, mask=corners_mask)
-        cv2.imshow('masked', masked_warped_image)
-        cv2.waitKey(1)
+        for contour in contours:
+            perimeter = cv2.arcLength(contour, True)
+            approx_corners = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
+            if len(approx_corners) == 4:
+                x, y, w, h = cv2.boundingRect(contour)
 
-        # Find contours in the corners mask
-        contours, _ = cv2.findContours(corners_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                # I am only interested in the clue board when I am close by,
+                # and it is a clue board only when x dim > y dim
+                if w > 500 and h > 300 and 1.0 < w / h < 2.0:
+                    print("width is: ", w)
+                    print("and height", h)
 
-        # Initialize lists to store corner points
-        corner_points = []
+                    top_left = (x, y)
+                    top_right = (x + w, y)
+                    bottom_left = (x, y + h)
+                    bottom_right = (x + w, y + h)
 
-        # Extract corner points from contours
-        for c in contours:
-            # Find bounding rectangle of the contour and add corners of the rectangle to corner_points list
-            x, y, w, h = cv2.boundingRect(c)
-            corner_points.extend([(x, y), (x + w, y), (x, y + h), (x + w, y + h)])
+                    radius = 5  # Radius of the circles
+                    thickness = 2  # Thickness of the circle outline
+                    color = (0, 255, 0)  # Color of the circles (in BGR format)
 
-        # Convert corner_points list to NumPy array
-        corner_points = np.array(corner_points)
-        # Find the extreme points to determine the four corner points
-        top_left = np.min(corner_points, axis=0)
-        top_right = [np.max(corner_points[:, 0]), np.min(corner_points[:, 1])]
-        bottom_left = [np.min(corner_points[:, 0]), np.max(corner_points[:, 1])]
-        bottom_right = np.max(corner_points, axis=0)
+                    # Draw circles at each corner point
+                    cv2.circle(self.blue_board, top_left, radius, color, thickness)
+                    cv2.circle(self.blue_board, top_right, radius, color, thickness)
+                    cv2.circle(self.blue_board, bottom_left, radius, color, thickness)
+                    cv2.circle(self.blue_board, bottom_right, radius, color, thickness)
 
-        # perspective transform the clue_board
-        src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
-        width, height = 600, 400
-        dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
-        matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
-        self.white_board = cv2.warpPerspective(self.blue_board, matrix, (width, height))
+                    print("width is: ", w)
+                    print("height is: ", h)
+                    img = cv2.rectangle(self.blue_board, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        cv2.imshow('A white board', self.white_board)
-        cv2.waitKey(1)
+                    cv2.imshow('white board', img)
+                    cv2.waitKey(1)
+                    # # Apply Harris Corner Detector to find the 4 white corner within the clue board
+                    # block_size = 5
+                    # aperture_size = 5
+                    # k = 0.08
+                    # # [:, :, 2] to select all rows, columns, and the elements in the third dimension (the blue channel).
+                    # harris_corners = cv2.cornerHarris(self.blue_board[:, :, 2], block_size, aperture_size, k)
+                    #
+                    # # Dilate the corner points to enhance them
+                    # harris_corners = cv2.dilate(harris_corners, None)
+                    #
+                    # # optimal value as a mask to be used identify strong corners
+                    # good_corner_mask = 0.01 * harris_corners.max()
+                    #
+                    # # Threshold the Harris corner response values to identify strong corners
+                    # corners_mask = np.zeros_like(harris_corners, dtype=np.uint8)
+                    # corners_mask[harris_corners > good_corner_mask] = 255  # Set strong corners to white (255)
+                    #
+                    # # use the corners_mask to mask out the corners
+                    # masked_warped_image = cv2.bitwise_and(
+                    #     self.blue_board, self.blue_board, mask=corners_mask)
+                    # cv2.imshow('masked', masked_warped_image)
+                    # cv2.waitKey(1)
 
-        self.white_board_detected = True
+                    # Find contours in the corners mask
+
+                    # Initialize lists to store corner points
+                    # corner_points = []
+                    #
+                    # # Extract corner points from contours
+                    # for c in contours:
+                    #     # Find bounding rectangle of the contour and add corners of the rectangle to corner_points list
+                    #     x, y, w, h = cv2.boundingRect(c)
+                    #     corner_points.extend([(x, y), (x + w, y), (x, y + h), (x + w, y + h)])
+                    #
+                    # # Convert corner_points list to NumPy array
+                    # corner_points = np.array(corner_points)
+                    # # Find the extreme points to determine the four corner points
+                    # top_left = np.min(corner_points, axis=0)
+                    # top_right = [np.max(corner_points[:, 0]), np.min(corner_points[:, 1])]
+                    # bottom_left = [np.min(corner_points[:, 0]), np.max(corner_points[:, 1])]
+                    # bottom_right = np.max(corner_points, axis=0)
+                    #
+                    # # perspective transform the clue_board
+                    # src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
+                    # width, height = 600, 400
+                    # dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
+                    # matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                    # self.white_board = cv2.warpPerspective(self.blue_board, matrix, (width, height))
+                    #
+                    # cv2.imshow('A white board', self.white_board)
+                    # cv2.waitKey(1)
+
+                    self.white_board_detected = True
 
     def SIFT_image(self):
 
@@ -395,7 +447,8 @@ class Drive:
         # cv2.imshow("Detect type", self.clue_board_reshaped)
         # cv2.waitKey(1)
 
-        clue_type_img = self.white_board[clue_type_y0:clue_type_y0 + letter_height, clue_type_x0:clue_type_x0 + letter_width]
+        clue_type_img = self.white_board[clue_type_y0:clue_type_y0 + letter_height,
+                        clue_type_x0:clue_type_x0 + letter_width]
 
         clue_type_predict = self.predict_clue([clue_type_img])
 
@@ -481,6 +534,7 @@ class Drive:
                 y_predicts.append(' ')  # Append empty string to indicate failure
 
         return y_predicts
+
 
 def main():
     try:
