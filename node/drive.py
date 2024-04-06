@@ -250,7 +250,9 @@ class Drive:
 
                     # # save the raw clue board
                     # clue_board_raw = roi[y:y + h, x:x + w]
-                    # First, perspective transform this raw clue board into a rectangle shape
+
+                    # Properly separate four corners and
+                    # perform perspective transform this blue board into a rectangle shape
                     src_pts = np.float32(self.separate_corners(approx_corners))
                     width, height = 780, 460
                     dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
@@ -265,10 +267,6 @@ class Drive:
 
     def detect_white_board(self):
 
-        # # only processing the lower portion of the camera view
-        # height, width, _ = self.camera_image.shape
-        # roi = self.camera_image[int(height / 2.5):, :]
-
         # change it to HSV format for better blue detection
         hsv = cv2.cvtColor(self.blue_board, cv2.COLOR_BGR2HSV)
         # cv2.imshow('Blue Square Detection', hsv)
@@ -281,9 +279,6 @@ class Drive:
         inverse_mask = cv2.bitwise_not(blue_mask)
         contours, _ = cv2.findContours(inverse_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # img = cv2.imread("/home/fizzer/ros_ws/src/2023_competition/enph353/enph353_gazebo/media/materials/textures/license_plates/plate_4.png")
-        # print("vlue has size: ", img.shape)
-
         for contour in contours:
             perimeter = cv2.arcLength(contour, True)
             approx_corners = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
@@ -293,81 +288,18 @@ class Drive:
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
                 if w > 500 and h > 300 and 1.0 < w / h < 2.0:
-                    print("width is: ", w)
-                    print("and height", h)
 
-                    top_left = (x, y)
-                    top_right = (x + w, y)
-                    bottom_left = (x, y + h)
-                    bottom_right = (x + w, y + h)
+                    # Properly separate four corners and
+                    # perform perspective transform this white board into a rectangle shape
+                    src_pts = np.float32(self.separate_corners(approx_corners))
+                    width, height = 600, 400
+                    dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
 
-                    radius = 5  # Radius of the circles
-                    thickness = 2  # Thickness of the circle outline
-                    color = (0, 255, 0)  # Color of the circles (in BGR format)
-
-                    # Draw circles at each corner point
-                    cv2.circle(self.blue_board, top_left, radius, color, thickness)
-                    cv2.circle(self.blue_board, top_right, radius, color, thickness)
-                    cv2.circle(self.blue_board, bottom_left, radius, color, thickness)
-                    cv2.circle(self.blue_board, bottom_right, radius, color, thickness)
-
-                    print("width is: ", w)
-                    print("height is: ", h)
-                    img = cv2.rectangle(self.blue_board, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-                    cv2.imshow('white board', img)
+                    # Compute the perspective transform matrix and apply the perspective transformation
+                    matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                    self.white_board = cv2.warpPerspective(self.blue_board, matrix, (width, height))
+                    cv2.imshow('A white Board', self.white_board)
                     cv2.waitKey(1)
-                    # # Apply Harris Corner Detector to find the 4 white corner within the clue board
-                    # block_size = 5
-                    # aperture_size = 5
-                    # k = 0.08
-                    # # [:, :, 2] to select all rows, columns, and the elements in the third dimension (the blue channel).
-                    # harris_corners = cv2.cornerHarris(self.blue_board[:, :, 2], block_size, aperture_size, k)
-                    #
-                    # # Dilate the corner points to enhance them
-                    # harris_corners = cv2.dilate(harris_corners, None)
-                    #
-                    # # optimal value as a mask to be used identify strong corners
-                    # good_corner_mask = 0.01 * harris_corners.max()
-                    #
-                    # # Threshold the Harris corner response values to identify strong corners
-                    # corners_mask = np.zeros_like(harris_corners, dtype=np.uint8)
-                    # corners_mask[harris_corners > good_corner_mask] = 255  # Set strong corners to white (255)
-                    #
-                    # # use the corners_mask to mask out the corners
-                    # masked_warped_image = cv2.bitwise_and(
-                    #     self.blue_board, self.blue_board, mask=corners_mask)
-                    # cv2.imshow('masked', masked_warped_image)
-                    # cv2.waitKey(1)
-
-                    # Find contours in the corners mask
-
-                    # Initialize lists to store corner points
-                    # corner_points = []
-                    #
-                    # # Extract corner points from contours
-                    # for c in contours:
-                    #     # Find bounding rectangle of the contour and add corners of the rectangle to corner_points list
-                    #     x, y, w, h = cv2.boundingRect(c)
-                    #     corner_points.extend([(x, y), (x + w, y), (x, y + h), (x + w, y + h)])
-                    #
-                    # # Convert corner_points list to NumPy array
-                    # corner_points = np.array(corner_points)
-                    # # Find the extreme points to determine the four corner points
-                    # top_left = np.min(corner_points, axis=0)
-                    # top_right = [np.max(corner_points[:, 0]), np.min(corner_points[:, 1])]
-                    # bottom_left = [np.min(corner_points[:, 0]), np.max(corner_points[:, 1])]
-                    # bottom_right = np.max(corner_points, axis=0)
-                    #
-                    # # perspective transform the clue_board
-                    # src_pts = np.float32([top_left, top_right, bottom_right, bottom_left])
-                    # width, height = 600, 400
-                    # dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
-                    # matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                    # self.white_board = cv2.warpPerspective(self.blue_board, matrix, (width, height))
-                    #
-                    # cv2.imshow('A white board', self.white_board)
-                    # cv2.waitKey(1)
 
                     self.white_board_detected = True
 
