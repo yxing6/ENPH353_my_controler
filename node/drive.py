@@ -54,10 +54,10 @@ class Drive:
         # detect the keypoint in the image,
         # with mask being None, so every part of the image is being searched
         self.keypoint = self.sift.detect(self.gear_grey, None)
-        # print("the number of key points: ", len(keypoint))
+        # print("the number of key points: ", len(self.keypoint))
         # cv2.imshow("name", self.gear_image)
         # cv2.waitKey(3)
-        # draw the keypoint onto the image, show and save it
+        # # draw the keypoint onto the image, show and save it
         # kp = cv2.drawKeypoints(self.gear_grey, self.keypoint, self.gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         # cv2.imshow("kp", kp)
         # cv2.waitKey(3)
@@ -65,6 +65,20 @@ class Drive:
 
         # calculate the descriptor for each key point
         self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
+
+        self.clue_type_dict = {
+            'S': '1',
+            'V': '2',
+            'C': '3',
+            'T': '4',
+            'P': '5',
+            'M': '6',
+            'W': '7',
+            'B': '8'
+        }
+        self.initial_clue_type = 'A'
+        self.clue_id = 0
+        self.clue_value_predict = 'TWO EXT'
 
         # import the CNN text prediction model
         self.model = tf.keras.models.load_model("/home/fizzer/ros_ws/src/my_controller/node/character_prediction.h5")
@@ -117,14 +131,25 @@ class Drive:
         if self.blue_board_detected:
             self.detect_white_board()
         if self.white_board_detected:
-            dst = self.SIFT_image()
-            if dst is not None:
-                clue_type_predict = self.parse_type(dst)
-                print("the clue_type prediction is :", clue_type_predict)
-                clue_value_predict = self.parse_value(dst)
-                print("the clue_value prediction string is :", clue_value_predict)
-            else:
-                self.blue_board_detected = False
+            value = self.clue_type_dict.get(self.initial_clue_type)
+            while value == 'Key not found':
+                dst = self.SIFT_image()
+                if dst is not None:
+                    clue_type_predict = self.parse_type(dst)
+                    print("the clue_type prediction is :", clue_type_predict)
+                    id_predict = self.clue_type_dict.get(clue_type_predict[0])
+                    while id_predict != 'Key not found':
+                        self.initial_clue_type = clue_type_predict
+                        value_predict = self.parse_value(dst)
+                        print("the clue_value prediction string is :", self.clue_value_predict)
+
+                        self.clue_id = id_predict
+                        self.clue_value_predict = value_predict
+
+        self.blue_board_detected = False
+        self.white_board_detected = False
+        self.clue_board_detected = False
+        self.initial_clue_type = 'A'
 
         if self.end_not_sent and not self.start_not_sent:
             # if end_not_sent is true and start_not_sent is false
@@ -246,7 +271,7 @@ class Drive:
 
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
-                if w > 225 and h > 145 and 1.0 < w / h < 2.0:
+                if w > 250 and h > 150 and 1.0 < w / h < 2.0:
 
                     # # save the raw clue board
                     # clue_board_raw = roi[y:y + h, x:x + w]
@@ -269,8 +294,6 @@ class Drive:
 
         # change it to HSV format for better blue detection
         hsv = cv2.cvtColor(self.blue_board, cv2.COLOR_BGR2HSV)
-        # cv2.imshow('Blue Square Detection', hsv)
-        # cv2.waitKey(1)
 
         # Define range of blue color in HSV and threshold the HSV image to get only blue colors
         lower_blue = np.array([100, 100, 100])
@@ -288,6 +311,8 @@ class Drive:
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
                 if w > 500 and h > 300 and 1.0 < w / h < 2.0:
+
+                    print("This is a white board, with weight and height:", w, h)
 
                     # Properly separate four corners and
                     # perform perspective transform this white board into a rectangle shape
@@ -384,9 +409,6 @@ class Drive:
 
         clue_type_predict = self.predict_clue([clue_type_img])
 
-        self.blue_board_detected = False
-        self.white_board_detected = False
-        self.clue_board_detected = False
 
         return clue_type_predict
 
@@ -426,10 +448,6 @@ class Drive:
         cv2.waitKey(1)
 
         clue_type_predict = self.predict_clue(clue_value_img_list)
-
-        self.blue_board_detected = False
-        self.white_board_detected = False
-        self.clue_board_detected = False
 
         return clue_type_predict
 
