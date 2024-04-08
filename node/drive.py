@@ -66,19 +66,21 @@ class Drive:
         # calculate the descriptor for each key point
         self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
 
-        self.clue_type_dict = {
-            'S': '1',
-            'V': '2',
-            'C': '3',
-            'T': '4',
-            'P': '5',
-            'M': '6',
-            'W': '7',
-            'B': '8'
-        }
-        self.initial_clue_type = 'A'
-        self.clue_id = 0
-        self.clue_value_predict = 'TWO EXT'
+        # self.clue_type_dict = {
+        #     'S': '1',
+        #     'V': '2',
+        #     'C': '3',
+        #     'T': '4',
+        #     'P': '5',
+        #     'M': '6',
+        #     'W': '7',
+        #     'B': '8'
+        # }
+        # self.initial_clue_type = 'A'
+        # self.clue_id = 0
+        # self.clue_value_predict = 'TWO EXT'
+        self.looking_for_board = 1
+        self.clue_type_list = ['0', 'S', 'V', 'C', 'T', 'P', 'M', 'W', 'B', '-1']
 
         # import the CNN text prediction model
         self.model = tf.keras.models.load_model("/home/fizzer/ros_ws/src/my_controller/node/character_prediction.h5")
@@ -131,25 +133,48 @@ class Drive:
         if self.blue_board_detected:
             self.detect_white_board()
         if self.white_board_detected:
-            value = self.clue_type_dict.get(self.initial_clue_type)
-            while value == 'Key not found':
-                dst = self.SIFT_image()
-                if dst is not None:
-                    clue_type_predict = self.parse_type(dst)
-                    print("the clue_type prediction is :", clue_type_predict)
-                    id_predict = self.clue_type_dict.get(clue_type_predict[0])
-                    while id_predict != 'Key not found':
-                        self.initial_clue_type = clue_type_predict
-                        value_predict = self.parse_value(dst)
-                        print("the clue_value prediction string is :", self.clue_value_predict)
+            clue_type_x0, clue_type_y0 = 250, 37
+            clue_value_x0, clue_value_y0 = 30, 252
 
-                        self.clue_id = id_predict
-                        self.clue_value_predict = value_predict
+            clue_type_prediction = self.parse_type(clue_type_x0, clue_type_y0)
+            print("The predicted clue type letter is: ", clue_type_prediction)
+            if clue_type_prediction[0] in self.clue_type_list:
+                print("clue_type_list.index(clue_type_prediction[0]): ", self.clue_type_list.index(clue_type_prediction[0]))
+                print("looking for number:", self.looking_for_board)
+                print("and they are equal:", self.clue_type_list.index(clue_type_prediction[0]) != self.looking_for_board)
+                do_while_3_times = 0
+                while do_while_3_times < 3 and self.clue_type_list.index(clue_type_prediction[0]) != self.looking_for_board:
+                    clue_type_prediction = self.parse_type(clue_type_x0, clue_type_y0)
+                    do_while_3_times += 1
 
-        self.blue_board_detected = False
-        self.white_board_detected = False
-        self.clue_board_detected = False
-        self.initial_clue_type = 'A'
+                clue_value_prediction = self.parse_value(clue_value_x0, clue_value_y0)
+
+                print("clue_type_prediction: ", clue_type_prediction)
+                print("clue_value_prediction: ", clue_value_prediction)
+
+            self.looking_for_board += 1
+            self.blue_board_detected = False
+            self.white_board_detected = False
+
+        #     value = self.clue_type_dict.get(self.initial_clue_type)
+        #     while value == 'Key not found':
+        #         dst = self.SIFT_image()
+        #         if dst is not None:
+        #             clue_type_predict = self.parse_type(dst)
+        #             print("the clue_type prediction is :", clue_type_predict)
+        #             id_predict = self.clue_type_dict.get(clue_type_predict[0])
+        #             while id_predict != 'Key not found':
+        #                 self.initial_clue_type = clue_type_predict
+        #                 value_predict = self.parse_value(dst)
+        #                 print("the clue_value prediction string is :", self.clue_value_predict)
+        #
+        #                 self.clue_id = id_predict
+        #                 self.clue_value_predict = value_predict
+        #
+        # self.blue_board_detected = False
+        # self.white_board_detected = False
+        # self.clue_board_detected = False
+        # self.initial_clue_type = 'A'
 
         if self.end_not_sent and not self.start_not_sent:
             # if end_not_sent is true and start_not_sent is false
@@ -312,7 +337,7 @@ class Drive:
                 # and it is a clue board only when x dim > y dim
                 if w > 500 and h > 300 and 1.0 < w / h < 2.0:
 
-                    print("This is a white board, with weight and height:", w, h)
+                    # print("This is a white board, with weight and height:", w, h)
 
                     # Properly separate four corners and
                     # perform perspective transform this white board into a rectangle shape
@@ -381,19 +406,19 @@ class Drive:
                     self.clue_board_detected = True
                     return dst
 
-    def parse_type(self, dst):
+    def parse_type(self, type_x0, type_y0):
 
         # 00 for top left
         # 01 for bottom left
         # 11 for bottom right
         # 10 for top right
-        x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
+        # x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
         # print(x_10, y_10)
 
-        clue_type_x0 = x_10 + 15
-        clue_type_y0 = y_10
+        clue_type_x0 = type_x0
+        clue_type_y0 = type_y0
         letter_width = 45
-        letter_height = 120
+        letter_height = 80
 
         clue_type_top_left = (clue_type_x0, clue_type_y0)
         clue_type_bottom_right = (clue_type_x0 + letter_width, clue_type_y0 + letter_height)
@@ -401,30 +426,29 @@ class Drive:
         color = (0, 255, 0)  # Green color in BGR format
         thickness = 2
         cv2.rectangle(self.white_board, clue_type_top_left, clue_type_bottom_right, color, thickness)
-        # cv2.imshow("Detect type", self.clue_board_reshaped)
-        # cv2.waitKey(1)
+        cv2.imshow("Detect type", self.white_board)
+        cv2.waitKey(1)
 
         clue_type_img = self.white_board[clue_type_y0:clue_type_y0 + letter_height,
                         clue_type_x0:clue_type_x0 + letter_width]
 
         clue_type_predict = self.predict_clue([clue_type_img])
 
-
         return clue_type_predict
 
-    def parse_value(self, dst):
+    def parse_value(self, value_x0, value_y0):
 
         # 00 for top left
         # 01 for bottom left
         # 11 for bottom right
         # 10 for top right
-        x_01, y_01 = int(dst[1][0][0]), int(dst[1][0][1])
+        # x_01, y_01 = 0, 0
         # print(x_10, y_10)
 
-        clue_value_x0 = x_01 + 20
-        clue_value_y0 = y_01 + 40
-        letter_width = 50
-        letter_height = 120
+        clue_value_x0 = value_x0
+        clue_value_y0 = value_y0
+        letter_width = 45
+        letter_height = 80
 
         # clue_value_top_left = (clue_value_x0, clue_value_y0)
         # clue_value_bottom_right = (clue_value_x0 + letter_width, clue_value_y0 + letter_height)
@@ -447,9 +471,9 @@ class Drive:
         cv2.imshow("Detect value", self.white_board)
         cv2.waitKey(1)
 
-        clue_type_predict = self.predict_clue(clue_value_img_list)
+        clue_value_predict = self.predict_clue(clue_value_img_list)
 
-        return clue_type_predict
+        return clue_value_predict
 
     # map the character to int by their unicode code representation
     # A - Z as 0 - 25 and 0 - 9 as 26 - 35
@@ -483,6 +507,7 @@ class Drive:
                 # print("OpenCV error:", e)
                 y_predicts.append(' ')  # Append empty string to indicate failure
 
+        # print("the prediction is:", y_predicts)
         return y_predicts
 
 
