@@ -134,7 +134,7 @@ class Drive:
             self.detect_white_board()
         if self.white_board_detected:
             clue_type_x0, clue_type_y0 = 250, 37
-            clue_value_x0, clue_value_y0 = 30, 252
+            clue_value_x0, clue_value_y0 = 30, 260
 
             clue_type_prediction = self.parse_type(clue_type_x0, clue_type_y0)
             print("The predicted clue type letter is: ", clue_type_prediction)
