@@ -45,6 +45,8 @@ class Drive:
         self.white_board = None
         self.clue_board = None
 
+        self.clue_detected = False
+
         # read in the fizz gear for SIFT
         gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
         self.gear_image = cv2.imread(gear_path)
@@ -66,24 +68,24 @@ class Drive:
         # calculate the descriptor for each key point
         self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
 
-        # self.clue_type_dict = {
-        #     'S': '1',
-        #     'V': '2',
-        #     'C': '3',
-        #     'T': '4',
-        #     'P': '5',
-        #     'M': '6',
-        #     'W': '7',
-        #     'B': '8'
-        # }
-        # self.initial_clue_type = 'A'
-        # self.clue_id = 0
-        # self.clue_value_predict = 'TWO EXT'
-        self.looking_for_board = 1
-        self.clue_type_list = ['0', 'S', 'V', 'C', 'T', 'P', 'M', 'W', 'B', '-1']
+        self.clue_type_dict = {
+            'S': '1',
+            'V': '2',
+            'C': '3',
+            'T': '4',
+            'P': '5',
+            'M': '6',
+            'W': '7',
+            'B': '8'
+        }
+        self.clue_type_str = None
+        self.clue_type_id = None
+        self.clue_value_str = None
 
         # import the CNN text prediction model
         self.model = tf.keras.models.load_model("/home/fizzer/ros_ws/src/my_controller/node/character_prediction.h5")
+        self.type_n = 0
+        self.value_n = 0
 
         # driving control parameters
         self.Kp = 0.02  # Proportional gain
@@ -128,7 +130,7 @@ class Drive:
             rospy.logerr(e)
             return
 
-        if not self.blue_board_detected and not self.clue_board_detected:
+        if not self.blue_board_detected and not self.white_board_detected:
             self.detect_blue_board()
         if self.blue_board_detected:
             self.detect_white_board()
@@ -138,21 +140,14 @@ class Drive:
 
             clue_type_prediction = self.parse_type(clue_type_x0, clue_type_y0)
             print("The predicted clue type letter is: ", clue_type_prediction)
-            if clue_type_prediction[0] in self.clue_type_list:
-                print("clue_type_list.index(clue_type_prediction[0]): ", self.clue_type_list.index(clue_type_prediction[0]))
-                print("looking for number:", self.looking_for_board)
-                print("and they are equal:", self.clue_type_list.index(clue_type_prediction[0]) != self.looking_for_board)
-                do_while_3_times = 0
-                while do_while_3_times < 3 and self.clue_type_list.index(clue_type_prediction[0]) != self.looking_for_board:
-                    clue_type_prediction = self.parse_type(clue_type_x0, clue_type_y0)
-                    do_while_3_times += 1
+            self.clue_type_str = ''.join(clue_type_prediction)
+            self.clue_type_id = self.clue_type_dict.get(self.clue_type_str)
 
-                clue_value_prediction = self.parse_value(clue_value_x0, clue_value_y0)
+            clue_value_prediction = self.parse_value(clue_value_x0, clue_value_y0)
+            print("clue_value_prediction: ", clue_value_prediction)
+            self.clue_value_str = ''.join(clue_value_prediction)
 
-                print("clue_type_prediction: ", clue_type_prediction)
-                print("clue_value_prediction: ", clue_value_prediction)
-
-            self.looking_for_board += 1
+            self.clue_detected = True
             self.blue_board_detected = False
             self.white_board_detected = False
 
@@ -227,10 +222,14 @@ class Drive:
         stop_msg = -1
         string_message = '14,password,{0},NA'
 
-        start_message = string_message.format(start_msg)
-        stop_message = string_message.format(stop_msg)
+        start_message = f"14,password,{start_msg},start"
+        stop_message = f"14,password,{stop_msg},stop"
+        reward_message = f"14,password,{self.clue_type_id}, {self.clue_value_str}"
 
-        duration = 120
+        # start_message = string_message.format(start_msg)
+        # stop_message = string_message.format(stop_msg)
+
+        duration = 240
         sim_time = data.clock.secs
 
         if self.start_not_sent:
@@ -238,6 +237,11 @@ class Drive:
             self.score_track_pub.publish(start_message)
             self.timer = sim_time
             self.start_not_sent = False
+
+        if self.clue_detected:
+            print(f"Sending clue type for {self.clue_value_str}")
+            self.score_track_pub.publish(reward_message)
+            self.clue_detected = False
 
         if sim_time >= self.timer + duration:
             if self.end_not_sent:
@@ -310,8 +314,8 @@ class Drive:
                     # Compute the perspective transform matrix and apply the perspective transformation
                     matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
                     self.blue_board = cv2.warpPerspective(roi, matrix, (width, height))
-                    cv2.imshow('A Blue Board', self.blue_board)
-                    cv2.waitKey(1)
+                    # cv2.imshow('A Blue Board', self.blue_board)
+                    # cv2.waitKey(1)
 
                     self.blue_board_detected = True
 
@@ -348,8 +352,8 @@ class Drive:
                     # Compute the perspective transform matrix and apply the perspective transformation
                     matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
                     self.white_board = cv2.warpPerspective(self.blue_board, matrix, (width, height))
-                    cv2.imshow('A white Board', self.white_board)
-                    cv2.waitKey(1)
+                    # cv2.imshow('A white Board', self.white_board)
+                    # cv2.waitKey(1)
 
                     self.white_board_detected = True
 
@@ -423,14 +427,23 @@ class Drive:
         clue_type_top_left = (clue_type_x0, clue_type_y0)
         clue_type_bottom_right = (clue_type_x0 + letter_width, clue_type_y0 + letter_height)
 
-        color = (0, 255, 0)  # Green color in BGR format
-        thickness = 2
-        cv2.rectangle(self.white_board, clue_type_top_left, clue_type_bottom_right, color, thickness)
-        cv2.imshow("Detect type", self.white_board)
-        cv2.waitKey(1)
+        # color = (0, 255, 0)  # Green color in BGR format
+        # thickness = 2
+        # cv2.rectangle(self.white_board, clue_type_top_left, clue_type_bottom_right, color, thickness)
+        # cv2.imshow("Detect type", self.white_board)
+        # cv2.waitKey(1)
 
         clue_type_img = self.white_board[clue_type_y0:clue_type_y0 + letter_height,
                         clue_type_x0:clue_type_x0 + letter_width]
+
+        gray = cv2.cvtColor(clue_type_img, cv2.COLOR_BGR2GRAY)
+        ret, binary = cv2.threshold(gray, 70, 255, cv2.THRESH_BINARY)
+        self.type_n += 1
+        img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/clue_type/{self.type_n}.jpg"
+        cv2.imwrite(img_des, binary)
+
+        # cv2.imshow("clue type", binary)
+        # cv2.waitKey(1)
 
         clue_type_predict = self.predict_clue([clue_type_img])
 
@@ -462,11 +475,22 @@ class Drive:
         for i in range(12):
             x_start = clue_value_x0 + i * letter_width
             y_start = clue_value_y0
+
             clue_char_top_left = (x_start, y_start)
             clue_char_bottom_right = (x_start + letter_width, y_start + letter_height)
-            cv2.rectangle(self.white_board, clue_char_top_left, clue_char_bottom_right, color, thickness)
+            # cv2.rectangle(self.white_board, clue_char_top_left, clue_char_bottom_right, color, thickness)
+
             clue_char_img = self.white_board[y_start:y_start + letter_height, x_start:x_start + letter_width]
             clue_value_img_list.append(clue_char_img)
+
+            gray = cv2.cvtColor(clue_char_img, cv2.COLOR_BGR2GRAY)
+            ret, binary = cv2.threshold(gray, 70, 255, cv2.THRESH_BINARY)
+            self.value_n += 1
+            img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/clue_value/{self.value_n}.jpg"
+            cv2.imwrite(img_des, binary)
+
+            # cv2.imshow("individual char", clue_char_img)
+            # cv2.waitKey(1)
 
         cv2.imshow("Detect value", self.white_board)
         cv2.waitKey(1)
