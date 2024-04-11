@@ -25,20 +25,8 @@ class Drive:
 
         # set a simulation time
         self.sim_time = 0
-        # self.pedestrian1_path = '/home/fizzer/Pictures/pedestrian1.png'
-        # self.pedestrian2_path = '/home/fizzer/Pictures/pedestrian4.png'
-        # ped_sift1 = cv2.SIFT_create()
-        # ped_sift2 = cv2.SIFT_create()
         self.driving_state = 0
         self.on_purple = 0
-
-        # self.pedestrian1_image_colored = cv2.resize(cv2.imread(self.pedestrian1_path), (120, 240))
-        # self.pedestrian1_image = cv2.cvtColor(self.pedestrian1_image_colored, cv2.COLOR_BGR2GRAY)
-        # self.pedestrian1_image_kp, self.pedestrian1_image_desc = ped_sift1.detectAndCompute(self.pedestrian1_image, None)
-        #
-        # self.pedestrian2_image_colored = cv2.resize(cv2.imread(self.pedestrian2_path), (120, 240))
-        # self.pedestrian2_image = cv2.cvtColor(self.pedestrian2_image_colored, cv2.COLOR_BGR2GRAY)
-        # self.pedestrian2_image_kp, self.pedestrian2_image_desc = ped_sift2.detectAndCompute(self.pedestrian2_image, None)
 
         # Initialize a ros node
         rospy.init_node('image_subscriber_node', anonymous=True)
@@ -65,30 +53,9 @@ class Drive:
         self.clue_board_detected = False
         self.blue_board = None
         self.white_board = None
-        self.clue_board = None
-
         self.clue_detected = False
-
-        # read in the fizz gear for SIFT
-        gear_path = "/home/fizzer/ros_ws/src/my_controller/launch/clue_board_top_left.png"
-        self.gear_image = cv2.imread(gear_path)
-        self.gear_grey = cv2.cvtColor(self.gear_image, cv2.COLOR_BGR2GRAY)
-        # construct a SIFT object
-        self.sift = cv2.SIFT_create()
-        # detect the keypoint in the image,
-        # with mask being None, so every part of the image is being searched
-        self.keypoint = self.sift.detect(self.gear_grey, None)
-        # print("the number of key points: ", len(self.keypoint))
-        # cv2.imshow("name", self.gear_image)
-        # cv2.waitKey(3)
-        # # draw the keypoint onto the image, show and save it
-        # kp = cv2.drawKeypoints(self.gear_grey, self.keypoint, self.gear_grey, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        # cv2.imshow("kp", kp)
-        # cv2.waitKey(3)
-        # cv2.imwrite('keypoints detected.jpg', kp)
-
-        # calculate the descriptor for each key point
-        self.kp_gear, self.des_gear = self.sift.compute(self.gear_grey, self.keypoint)
+        # import the CNN text prediction model
+        self.model = tf.keras.models.load_model("/home/fizzer/ros_ws/src/my_controller/node/character_prediction.h5")
 
         self.clue_type_dict = {
             'S': '1',
@@ -104,15 +71,10 @@ class Drive:
         self.clue_type_id = None
         self.clue_value_str = None
 
-        # import the CNN text prediction model
-        self.model = tf.keras.models.load_model("/home/fizzer/ros_ws/src/my_controller/node/character_prediction.h5")
-        self.type_n = 0
-        self.value_n = 0
-
         # driving control parameters
         self.Kp = 0.034  # Proportional gain
         self.error_threshold = 35  # drive with different linear speed wrt this error_theshold
-        self.linear_val_max = 0.37  # drive fast when error is small
+        self.linear_val_max = 0.3  # drive fast when error is small
         self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 640  # center of the frame initialized to be 0, updated at each find_middle function call
 
@@ -125,8 +87,8 @@ class Drive:
         self.end_not_sent = True
 
     def get_current_vel(self, twist):
-        self.twist_msg.linear.x = round(twist.linear.x,3)
-        self.twist_msg.angular.z = round(twist.angular.z,3)
+        self.twist_msg.linear.x = round(twist.linear.x, 3)
+        self.twist_msg.angular.z = round(twist.angular.z, 3)
 
     def stop(self):
         twist_msg = Twist()
@@ -141,7 +103,7 @@ class Drive:
         try:
             self.camera_image = self.bridge.imgmsg_to_cv2(data, 'bgr8')
             cv2.imshow("Full camera view", self.camera_image)
-            cv2.waitKey(3)
+            cv2.waitKey(1)
         except Exception as e:
             rospy.logerr(e)
             return
@@ -167,29 +129,7 @@ class Drive:
             self.blue_board_detected = False
             self.white_board_detected = False
 
-        #     value = self.clue_type_dict.get(self.initial_clue_type)
-        #     while value == 'Key not found':
-        #         dst = self.SIFT_image()
-        #         if dst is not None:
-        #             clue_type_predict = self.parse_type(dst)
-        #             print("the clue_type prediction is :", clue_type_predict)
-        #             id_predict = self.clue_type_dict.get(clue_type_predict[0])
-        #             while id_predict != 'Key not found':
-        #                 self.initial_clue_type = clue_type_predict
-        #                 value_predict = self.parse_value(dst)
-        #                 print("the clue_value prediction string is :", self.clue_value_predict)
-        #
-        #                 self.clue_id = id_predict
-        #                 self.clue_value_predict = value_predict
-        #
-        # self.blue_board_detected = False
-        # self.white_board_detected = False
-        # self.clue_board_detected = False
-        # self.initial_clue_type = 'A'
-
         if self.end_not_sent and not self.start_not_sent:
-            # if end_not_sent is true and start_not_sent is false
-            # Create Twist message and publish to cmd_vel
             self.calculate_speed(self.camera_image)
 
             if not self.driving_state == 6:
@@ -370,7 +310,7 @@ class Drive:
             self.twist_msg.linear.x = self.linear_val_min
 
         if self.driving_state == 1:
-            self.twist_msg.linear.x = self.linear_val_max + 0.1
+            self.twist_msg.linear.x = self.linear_val_max - 0.05
         elif self.driving_state == 4:
             current_time = time.time()
             if int(current_time - self.state_trans_start_time) > 11:
@@ -477,10 +417,7 @@ class Drive:
         stop_message = f"14,password,{stop_msg},stop"
         reward_message = f"14,password,{self.clue_type_id}, {self.clue_value_str}"
 
-        # start_message = string_message.format(start_msg)
-        # stop_message = string_message.format(stop_msg)
-
-        duration =  400
+        duration = 400
         sim_time = data.clock.secs
 
         if self.start_not_sent:
@@ -551,8 +488,7 @@ class Drive:
 
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
-                if w > 250 and h > 150 and 1.0 < w / h < 2.0:
-
+                if w > 225 and h > 125 and 1.0 < w / h < 2.0:
                     # # save the raw clue board
                     # clue_board_raw = roi[y:y + h, x:x + w]
 
@@ -591,7 +527,6 @@ class Drive:
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
                 if w > 500 and h > 300 and 1.0 < w / h < 2.0:
-
                     # print("This is a white board, with weight and height:", w, h)
 
                     # Properly separate four corners and
@@ -608,93 +543,31 @@ class Drive:
 
                     self.white_board_detected = True
 
-    def SIFT_image(self):
+    def char_image_format(self, bgr_image):
 
-        matching_points = 4
+        target_brightness = 2
 
-        clue_board_grey = cv2.cvtColor(self.white_board, cv2.COLOR_BGR2GRAY)
-        kp_camera, des_camera = self.sift.detectAndCompute(clue_board_grey, None)
+        gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
+        brightness = np.mean(gray)
+        delta_brightness = target_brightness - brightness
+        adjusted = cv2.add(gray, np.full_like(gray, delta_brightness, dtype=np.uint8))
 
-        # FLANN parameters
-        FLANN_INDEX_KDTREE = 1
-        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict()
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
+        threshold = 240
+        _, binary = cv2.threshold(adjusted, threshold, 255, cv2.THRESH_BINARY)
 
-        # return the best 2 matches
-        if des_camera is not None and len(des_camera) > 2:
-            matches = flann.knnMatch(self.des_gear, des_camera, k=2)
-
-            # Need to draw only good matches, so create a mask
-            homography_mask = []
-
-            # ratio test as per Lowe's paper
-            for i, (m, n) in enumerate(matches):
-                if m.distance < 0.7 * n.distance:
-                    homography_mask.append(m)
-
-            # draw homography in the camera image
-            query_pts = np.float32([self.kp_gear[m.queryIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
-            train_pts = np.float32([kp_camera[m.trainIdx].pt for m in homography_mask]).reshape(-1, 1, 2)
-            if len(query_pts) >= matching_points:
-                matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
-
-                # Perspective transform
-                h, w = self.gear_image.shape[0], self.gear_image.shape[1]
-                pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
-                dst = cv2.perspectiveTransform(pts, matrix)
-
-                # 00 for top left
-                # 01 for bottom left
-                # 11 for bottom right
-                # 10 for top right
-                x_00, y_00 = int(dst[0][0][0]), int(dst[0][0][1])
-                x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
-
-                # print("x_10 is:", x_10, "x_00 is", x_00, "and diff:", x_10 - x_00)
-
-                if x_10 - x_00 > 100:
-                    homography_img = cv2.polylines(self.white_board, [np.int32(dst)], True, (0, 0, 255), 4)
-                    # cv2.imshow("Homography", homography_img)
-                    # cv2.waitKey(1)
-
-                    self.clue_board_detected = True
-                    return dst
+        return binary
 
     def parse_type(self, type_x0, type_y0):
-
-        # 00 for top left
-        # 01 for bottom left
-        # 11 for bottom right
-        # 10 for top right
-        # x_10, y_10 = int(dst[3][0][0]), int(dst[3][0][1])
-        # print(x_10, y_10)
 
         clue_type_x0 = type_x0
         clue_type_y0 = type_y0
         letter_width = 45
         letter_height = 80
 
-        clue_type_top_left = (clue_type_x0, clue_type_y0)
-        clue_type_bottom_right = (clue_type_x0 + letter_width, clue_type_y0 + letter_height)
-
-        # color = (0, 255, 0)  # Green color in BGR format
-        # thickness = 2
-        # cv2.rectangle(self.white_board, clue_type_top_left, clue_type_bottom_right, color, thickness)
-        # cv2.imshow("Detect type", self.white_board)
-        # cv2.waitKey(1)
-
-        clue_type_img = self.white_board[clue_type_y0:clue_type_y0 + letter_height,
-                        clue_type_x0:clue_type_x0 + letter_width]
-
-        gray = cv2.cvtColor(clue_type_img, cv2.COLOR_BGR2GRAY)
-        ret, binary = cv2.threshold(gray, 70, 255, cv2.THRESH_BINARY)
-        self.type_n += 1
-        img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/clue_type/{self.type_n}.jpg"
-        cv2.imwrite(img_des, binary)
-
-        # cv2.imshow("clue type", binary)
-        # cv2.waitKey(1)
+        clue_type_img_raw = self.white_board[clue_type_y0:clue_type_y0 + letter_height,
+                            clue_type_x0:clue_type_x0 + letter_width]
+        clue_type_img = self.char_image_format(clue_type_img_raw)
+        img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/raw/{self.raw}.jpg"
 
         clue_type_predict = self.predict_clue([clue_type_img])
 
@@ -702,63 +575,24 @@ class Drive:
 
     def parse_value(self, value_x0, value_y0):
 
-        # 00 for top left
-        # 01 for bottom left
-        # 11 for bottom right
-        # 10 for top right
-        # x_01, y_01 = 0, 0
-        # print(x_10, y_10)
-
         clue_value_x0 = value_x0
         clue_value_y0 = value_y0
         letter_width = 45
         letter_height = 80
-
-        # clue_value_top_left = (clue_value_x0, clue_value_y0)
-        # clue_value_bottom_right = (clue_value_x0 + letter_width, clue_value_y0 + letter_height)
-
-        color = (255, 0, 0)
-        thickness = 2
-        # cv2.rectangle(self.clue_board_reshaped, clue_value_top_left, clue_value_bottom_right, color, thickness)
-        # cv2.imshow("Detect value", self.clue_board_reshaped)
 
         clue_value_img_list = []
         for i in range(12):
             x_start = clue_value_x0 + i * letter_width
             y_start = clue_value_y0
 
-            clue_char_top_left = (x_start, y_start)
-            clue_char_bottom_right = (x_start + letter_width, y_start + letter_height)
-            # cv2.rectangle(self.white_board, clue_char_top_left, clue_char_bottom_right, color, thickness)
-
-            clue_char_img = self.white_board[y_start:y_start + letter_height, x_start:x_start + letter_width]
+            clue_char_img_raw = self.white_board[y_start:y_start + letter_height, x_start:x_start + letter_width]
+            clue_char_img = self.char_image_format(clue_char_img_raw)
             clue_value_img_list.append(clue_char_img)
-
-            gray = cv2.cvtColor(clue_char_img, cv2.COLOR_BGR2GRAY)
-            ret, binary = cv2.threshold(gray, 70, 255, cv2.THRESH_BINARY)
-            self.value_n += 1
-            img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/clue_value/{self.value_n}.jpg"
-            cv2.imwrite(img_des, binary)
-
-            # cv2.imshow("individual char", clue_char_img)
-            # cv2.waitKey(1)
-
-        cv2.imshow("Detect value", self.white_board)
-        cv2.waitKey(1)
+            img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/raw/{self.raw}.jpg"
 
         clue_value_predict = self.predict_clue(clue_value_img_list)
 
         return clue_value_predict
-
-    # map the character to int by their unicode code representation
-    # A - Z as 0 - 25 and 0 - 9 as 26 - 35
-    def char_to_int(self, my_char):
-        if 'A' <= my_char <= 'Z':
-            return ord(my_char) - ord('A')
-        elif '0' <= my_char <= '9':
-            return 26 + ord(my_char) - ord('0')
-        else:
-            raise ValueError(f"Invalid character: {my_char}")
 
     # map the int to char by their unicode code representation
     # A - Z as 0 - 25 and 0 - 9 as 26 - 35
@@ -774,15 +608,21 @@ class Drive:
         y_predicts = list()
         for img in images:
             try:
-                img_reshape = cv2.resize(img, (100, 140), interpolation=cv2.INTER_LINEAR)
-                img_aug = np.expand_dims(img_reshape / 255.0, axis=0)
-                y_p = self.model.predict(img_aug)[0]
-                y_predicts.append(self.int_to_char(np.argmax(y_p)))
+                min_pixel_value = img.min()
+                if min_pixel_value == 0:
+                    # img_reshape = cv2.resize(img, (100, 140), interpolation=cv2.INTER_LINEAR)
+                    # img_aug = np.expand_dims(img_reshape / 255.0, axis=0)
+                    img_reshape = cv2.resize(img, (60, 120), interpolation=cv2.INTER_LINEAR)
+                    img_aug = np.expand_dims(img_reshape, axis=0)
+                    y_p = self.model.predict(img_aug)[0]
+                    y_predicts.append(self.int_to_char(np.argmax(y_p)))
+                else:
+                    # Append empty string to indicate failure
+                    y_predicts.append(' ')
             except cv2.error as e:
-                # print("OpenCV error:", e)
-                y_predicts.append(' ')  # Append empty string to indicate failure
+                # Append empty string to indicate failure
+                y_predicts.append(' ')
 
-        # print("the prediction is:", y_predicts)
         return y_predicts
 
 
