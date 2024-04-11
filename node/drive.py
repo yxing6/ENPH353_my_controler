@@ -3,6 +3,7 @@
 import rospy
 import cv2
 import csv
+import tensorflow as tf
 import time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -30,6 +31,13 @@ class Drive:
         ped_sift2 = cv2.SIFT_create()
         self.driving_state = 0
         self.on_purple = 0
+
+        self.model1 = tf.keras.models.load_model(r"/home/fizzer/Pictures/imitationmodel.keras")
+        self.interpreter = tf.lite.Interpreter(model_path="/home/fizzer/Pictures/model.tflite")
+        self.interpreter.allocate_tensors()
+
+        self.input_details = self.interpreter.get_input_details()
+        self.output_details = self.interpreter.get_output_details()
 
         self.pedestrian1_image_colored = cv2.resize(cv2.imread(self.pedestrian1_path), (120, 240))
         self.pedestrian1_image = cv2.cvtColor(self.pedestrian1_image_colored, cv2.COLOR_BGR2GRAY)
@@ -66,7 +74,7 @@ class Drive:
         # driving control parameters
         self.Kp = 0.034  # Proportional gain
         self.error_threshold = 35  # drive with different linear speed wrt this error_theshold
-        self.linear_val_max = 0.37  # drive fast when error is small
+        self.linear_val_max = 0.35  # drive fast when error is small
         self.linear_val_min = 0.1  # drive slow when error is small
         self.mid_x = 640  # center of the frame initialized to be 0, updated at each find_middle function call
 
@@ -80,9 +88,9 @@ class Drive:
         self.end_not_sent = True
         self.past_image = np.array([])
 
-    def get_current_vel(self, twist):
-        self.twist_msg.linear.x = round(twist.linear.x,3)
-        self.twist_msg.angular.z = round(twist.angular.z,3)
+    #def get_current_vel(self, twist):
+     #   self.twist_msg.linear.x = round(twist.linear.x,3)
+      #  self.twist_msg.angular.z = round(twist.angular.z,3)
 
     #def odom_callback(self, msg):
         # Position
@@ -126,8 +134,8 @@ class Drive:
             self.calculate_speed(cv_image)
             # print("speed: ", twist_msg.linear.x)
             # print("angular: ", twist_msg.angular.z)
-            if not self.driving_state == 6:
-               self.cmd_vel_pub.publish(self.twist_msg)
+            if self.driving_state >= 5:
+                self.cmd_vel_pub.publish(self.twist_msg)
 
             #if self.driving_state == 6 and self.imgnum < 20000:
              #   self.imgnum += 1
@@ -161,18 +169,18 @@ class Drive:
             else:
                 redCount = self.count_reds(hsv)
 
-                if self.driving_state == 0 and redCount > 500:
+                if self.driving_state == 0 and redCount > 480:
                     self.driving_state = 1
                     print("Detected red!: " + str(redCount))
-                elif self.driving_state == 1 and redCount < 500:
+                elif self.driving_state == 1 and redCount < 480:
                     self.driving_state = 2
                     print("Off the red!: " + str(redCount))
                 elif self.driving_state == 2:
                     self.count_purples(hsv)
-                    if redCount > 500:
+                    if redCount > 480:
                         self.driving_state = 3
                         print("Detected red again!: " + str(redCount))
-                elif self.driving_state == 3 and redCount < 500:
+                elif self.driving_state == 3 and redCount < 480:
                     self.driving_state = 4
                     self.state_trans_start_time = time.time()
                     print("Off the red again!: " + str(redCount))
@@ -213,33 +221,40 @@ class Drive:
 
             last_row = binary[-1,:]
             # print(last_row)
-        elif self.driving_state == 5 or self.driving_state == 6 or self.driving_state == 7:
+        elif self.driving_state == 5 or self.driving_state == 7:
             filtered_img = cv2.cvtColor(cv2.medianBlur(img[630:719,:,:], 71), cv2.COLOR_BGR2HSV)
             filtered_img = cv2.cvtColor(cv2.GaussianBlur(filtered_img, (41, 41), 0), cv2.COLOR_BGR2HSV)
             #filtered_img = cv2.cvtColor(cv2.bilateralFilter(filtered_img, 13, 63, 47), cv2.COLOR_BGR2HSV)
 
             self.count_purples(hsv)
-            print("filtered img: " + str(filtered_img))
-            YELLOW_MAX = np.array([50, 245, 197],np.uint8)
-            YELLOW_MIN = np.array([13, 195, 145],np.uint8)
 
-            if self.driving_state == 7:
-                YELLOW_MAX = np.array([50, 230, 193],np.uint8)
-                YELLOW_MIN = np.array([13, 194, 120],np.uint8)
+            if self.driving_state == 5 or self.driving_state == 7:
+                print("filtered img: " + str(filtered_img))
+                YELLOW_MAX = np.array([50, 245, 197],np.uint8)
+                YELLOW_MIN = np.array([11, 195, 145],np.uint8)
+
+                cur_time = time.time() - self.state_trans_start_time
+                #print("Time: " + str(round(cur_time)))
+                if self.driving_state == 7 and cur_time < 45:
+                    YELLOW_MAX = np.array([50, 230, 193],np.uint8)
+                    YELLOW_MIN = np.array([10, 194, 120],np.uint8)
+                elif self.driving_state == 7:
+                    YELLOW_MAX = np.array([50, 230, 192],np.uint8)
+                    YELLOW_MIN = np.array([10, 194, 120],np.uint8)
 
 
-            #print("Y Max: " + str(YELLOW_MAX))
-            #print("Y Min: " + str(YELLOW_MIN))
 
-            frame_threshed = cv2.bitwise_not(cv2.inRange(filtered_img[87:89,:], YELLOW_MIN, YELLOW_MAX))
-            for index in range(1,len(frame_threshed[1]) - 1):
-                if frame_threshed[1][index-1] == 0 and frame_threshed[1][index+1] == 0:
-                    frame_threshed[1][index] = 0
-                elif frame_threshed[1][index-1] == 1 and frame_threshed[1][index+1] == 1:
-                    frame_threshed[1][index] = 1
+                #print("Y Max: " + str(YELLOW_MAX))
+                #print("Y Min: " + str(YELLOW_MIN))
 
-            last_row = frame_threshed[-1,:]
+                frame_threshed = cv2.bitwise_not(cv2.inRange(filtered_img[87:89,:], YELLOW_MIN, YELLOW_MAX))
+                for index in range(1,len(frame_threshed[1]) - 1):
+                    if frame_threshed[1][index-1] == 0 and frame_threshed[1][index+1] == 0:
+                        frame_threshed[1][index] = 0
+                    elif frame_threshed[1][index-1] == 1 and frame_threshed[1][index+1] == 1:
+                        frame_threshed[1][index] = 1
 
+                last_row = frame_threshed[-1,:]
             #if self.driving_state == 7 and time.time() - self.state_trans_start_time < 5:
                #last_row = cv2.bitwise_and(last_row, 0)
                 #contours, hierarchy = cv2.findContours(frame_threshed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -272,7 +287,8 @@ class Drive:
              #   return Twist()
             #print("Last row: " + str(last_row))
         #print("last row: " + str(last_row.shape))
-        # elif self.driving_state == 6:
+        # elif self.driving_
+        # state == 6:
 
         #     PURPLE_MIN = np.array([135, 210, 210],np.uint8)
         #     PURPLE_MAX = np.array([165, 255, 255],np.uint8)
@@ -286,46 +302,123 @@ class Drive:
         #     if purpleCount > 400:
         #         self.driving_state = 7
         #         print("Detected purple!: " + str(purpleCount))
+        elif self.driving_state == 6:
+            if time.time() - self.state_trans_start_time >= 7:
+                full_hsv = cv2.medianBlur(cv2.cvtColor(cv2.resize(img, dsize=(640, 360), interpolation=cv2.INTER_CUBIC), cv2.COLOR_BGR2HSV), 3)
+                #print("not following")
+                last_row = []
+                self.mid_x = 640
+                if time.time() - self.state_trans_start_time >= 11:
+                    PURPLE_MIN = np.array([135, 210, 210],np.uint8)
+                    PURPLE_MAX = np.array([165, 255, 255],np.uint8)
+                    purple_threshold = cv2.inRange(full_hsv, PURPLE_MIN, PURPLE_MAX)
+                    purple_contours, _ = cv2.findContours(purple_threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    #print("Purple contours length: " + str(len(purple_contours)))
+                    if len(purple_contours) > 0:
+                        pM = cv2.moments(max(purple_contours, key = cv2.contourArea))
+                        self.mid_x = 640
+                        if pM['m00'] != 0:
+                            #print("purple following")
+                            self.mid_x = int(2*pM['m10']/pM['m00'])
+                            self.Kp = 0.015
+                    else:
+                        BROWN_MIN = np.array([4, 129, 164],np.uint8)
+                        BROWN_MAX = np.array([14, 150, 186],np.uint8)
+                        brown_tracker = cv2.inRange(full_hsv, BROWN_MIN, BROWN_MAX)
+                        brown_contours, _ = cv2.findContours(brown_tracker, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                        #print("Brown contours length: " + str(len(brown_contours)))
+                        if len(brown_contours) > 0:
+                            bM = cv2.moments(max(brown_contours, key = cv2.contourArea))
+                            if bM['m00'] != 0:
+                                #print("brown following")
+                                self.mid_x = int(2*bM['m10']/bM['m00'])
+                else:
+                    BROWN_MIN = np.array([4, 129, 164],np.uint8)
+                    BROWN_MAX = np.array([14, 150, 186],np.uint8)
+                    brown_tracker = cv2.inRange(full_hsv, BROWN_MIN, BROWN_MAX)
+                    brown_contours, _ = cv2.findContours(brown_tracker, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    #print("Brown contours length: " + str(len(brown_contours)))
+                    if len(brown_contours) > 0:
+                        bM = cv2.moments(max(brown_contours, key = cv2.contourArea))
+                        if bM['m00'] != 0:
+                            #print("brown following")
+                            self.mid_x = int(2*bM['m10']/bM['m00'])
 
-        if np.any(last_row == 0):
-            last_list = last_row.tolist()
-            first_index = last_list.index(0) if 0 in last_list else 0
-            last_index = (len(last_list) - 1 - last_list[::-1].index(0)) if 0 in last_list else len(last_list) - 1
-            new_mid = (first_index + last_index) / 2
-            self.mid_x = new_mid
+                self.count_purples(hsv)
 
+
+        if not (self.driving_state == 6):
+            if np.any(last_row == 0):
+                last_list = last_row.tolist()
+                first_index = last_list.index(0) if 0 in last_list else 0
+                last_index = (len(last_list) - 1 - last_list[::-1].index(0)) if 0 in last_list else len(last_list) - 1
+                new_mid = (first_index + last_index) / 2
+                self.mid_x = new_mid
+    
         # angular error is the different between the center of the frame and targer center
         angular_error = dim_x / 2 - self.mid_x
         self.twist_msg.angular.z = self.Kp * angular_error
 
         self.Kp = 0.034
 
-        if abs(angular_error) <= self.error_threshold:
-            self.twist_msg.linear.x = self.linear_val_max
-        else:
-            self.twist_msg.linear.x = self.linear_val_min
+        current_time = time.time()
 
         if self.driving_state == 1:
-            self.twist_msg.linear.x = self.linear_val_max + 0.1
+            self.twist_msg.linear.x = 0.17
+            # self.twist_msg.linear.x = 0.0
+            # if current_time - self.state_trans_start_time > 1.1:
+            #     subtraction = cv2.absdiff(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), self.past_image)
+            #     subtraction = cv2.threshold(subtraction, 15, 255, cv2.THRESH_BINARY)
+            #     for i in range(len(subtraction)):
+            #         for j in range(len(subtraction[0])):
+            #             if subtraction[i][j] > 0:
+            #                 self.driving_state = 2
+        elif self.driving_state == 2:
+            self.twist_msg.linear.x = self.linear_val_max + 0.16
         elif self.driving_state == 4:
-            current_time = time.time()
+            self.twist_msg.linear.x = self.linear_val_max - 0.06
             if int(current_time - self.state_trans_start_time) > 11:
                 self.twist_msg.angular.z += 0.25
                 if int(current_time - self.state_trans_start_time) > 13:
-                    self.twist_msg.angular.z += 0.25
+                    self.twist_msg.angular.z += 0.24
                     if int(current_time - self.state_trans_start_time) > 20:
                         self.twist_msg.angular.z -= 0.1
                         if int(current_time - self.state_trans_start_time) > 25:
                             self.twist_msg.angular.z += 0.35
         elif self.driving_state == 5:
-            self.twist_msg.linear.x = self.linear_val_max - 0.2
+            self.twist_msg.linear.x = self.linear_val_max - 0.2053
+        elif self.driving_state == 6:
+            self.twist_msg.linear.x = self.linear_val_max - 0.045
+            if current_time - self.state_trans_start_time < 2:
+                self.twist_msg.angular.z = -0.08
+                self.twist_msg.linear.x = 0.28
+            elif current_time - self.state_trans_start_time < 4:
+                self.twist_msg.angular.z = 0.269
+                self.twist_msg.linear.x = 0.3
+            elif current_time - self.state_trans_start_time < 7:
+                self.twist_msg.angular.z = 0.59
+                self.twist_msg.linear.x = 0.32
+                
         elif self.driving_state == 7:
-            self.twist_msg.linear.x = self.linear_val_max - 0.2
-            self.twist_msg.angular.z += 0.35
-            self.Kp = 0.04
-        #cropped_gray = cv2.resize(gray[int(dim_y/5):int(4*dim_y/5), int(dim_x/5):int(4*dim_x/5)], (0,0), fx=0.3, fy=0.3)
-        #print("cropped shape: " + str(cropped_gray.shape))
-        #self.pedestrian_SIFT(cropped_gray)
+            self.twist_msg.linear.x = self.linear_val_max - 0.194
+            if int(current_time - self.state_trans_start_time) < 3: 
+                self.twist_msg.angular.z += 1.065
+            #elif int(current_time - self.state_trans_start_time) < 55: 
+            elif int(current_time - self.state_trans_start_time) > 8:
+                #self.twist_msg.angular.z += 0.125
+                self.twist_msg.angular.z += 0.062
+            self.Kp = 0.042
+        else:
+            self.twist_msg.linear.x = self.linear_val_max
+
+        if abs(angular_error) > self.error_threshold and not (self.driving_state == 6 or self.driving_state == 2):
+            self.twist_msg.linear.x = self.linear_val_min
+
+        if self.on_purple == 1:
+            self.twist_msg.angular.z = 0.0
+            self.twist_msg.linear.x = 0.23
+
+        self.past_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
 
     def clock_callback(self, data):
@@ -377,30 +470,25 @@ class Drive:
                 if purple_threshed[index][index2] > 0:
                     purpleCount += 1
 
-        if purpleCount > 390:
+        if purpleCount > 340 or (self.driving_state == 6 and purpleCount > 200):
             self.on_purple = 1
             print("Detected purple!: " + str(purpleCount))
         elif self.on_purple == 1:
-            if self.driving_state == 4 or self.driving_state == 5:
-                #self.twist_msg.angular.z = 0
-                #self.twist_msg.linear.x = 0.3
-                #self.cmd_vel_pub.publish(self.twist_msg)
+            if (self.driving_state == 4 or self.driving_state == 5) and time.time() - self.state_trans_start_time > 10.0:
+                self.state_trans_start_time = time.time()
+                self.twist_msg.angular.z = 0
+                self.twist_msg.linear.x = 0.3
+                self.cmd_vel_pub.publish(self.twist_msg)
                 self.driving_state += 1
                 print("State: " + str(self.driving_state))
                 self.on_purple = 0
-                #time.sleep(0.7)
             elif self.driving_state == 6:
                 self.state_trans_start_time = time.time()
-                #self.twist_msg.angular.z = 0
-                #self.twist_msg.linear.x = 0.3
-                #self.cmd_vel_pub.publish(self.twist_msg)
+                self.twist_msg.angular.z = 0.7
+                self.twist_msg.linear.x = 0.0
+                self.cmd_vel_pub.publish(self.twist_msg)
                 self.driving_state += 1
-                #print("State: " + str(self.driving_state))
                 self.on_purple = 0
-                #time.sleep(0.7)
-                #print("Would start stage 7")
-                #self.spawn_position([-3.88, 0.476, 0.1], 0.0, 0.0, 3.14)
-                #time.sleep(1.5)
                 #self.spawn_position([-3.88, 0.476, 0.1], 0.0, 0.0, 3.14)
             elif self.driving_state == 2:
                 self.driving_state = 5
@@ -427,85 +515,6 @@ class Drive:
 
         except rospy.ServiceException:
             print ("Service call failed")
-
-    
-
-    def pedestrian_SIFT(self, gray_frame):
-
-        # Features
-        sift = cv2.SIFT_create()
-        kp_image, desc_image = sift.detectAndCompute(gray_frame, None)
-		# Feature matching
-        index_params = dict(algorithm=0, trees=5)
-        search_params = dict()
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
-
-        matches1 = flann.knnMatch(self.pedestrian1_image_desc, desc_image, k=2)
-        good_matches1 = []
-
-        #matches2 = flann.knnMatch(self.pedestrian2_image_desc, desc_image, k=2)
-        #good_matches2 = []
-
-        for m, n in matches1:
-            if m.distance < 0.6 * n.distance:
-                good_matches1.append(m)
-
-        if len(good_matches1) > 0:
-            print(len(good_matches1))
-        
-        #for m, n in matches2:
-         #   if m.distance < 0.45 * n.distance:
-          #      good_matches2.append(m)
-
-        img_with_matches = cv2.drawMatches(self.browse_image_colored, self.browse_image_kp, frame, kp_image, good_matches, frame)
-        cv2.imshow("Image", img_with_matches)
-        recorded_im, img_with_matches_live = np.split(img_with_matches, 2, axis=1)
-
-        if len(good_matches1) > 8:
-            print("Right pedestrian found")
-            src_pts = np.float32([ self.pedestrian1_image_kp[m.queryIdx].pt for m in good_matches1 ]).reshape(-1,1,2)
-            dst_pts = np.float32([ kp_image[m.trainIdx].pt for m in good_matches1 ]).reshape(-1,1,2)
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-            matchesMask = mask.ravel().tolist()
-            pts = np.float32([ [0,0],[0,240],[120,240],[120,0] ]).reshape(-1,1,2)
-            dst = cv2.perspectiveTransform(pts,M)
-            homography = cv2.polylines(gray_frame,[np.int32(dst)],True, 255, 3, cv2.LINE_AA)
-            draw_params = dict(matchColor = 120, # draw matches in green color
-                    singlePointColor = None,
-                    matchesMask = matchesMask, # draw only inliers
-                    flags = 2)
-            img_4 = cv2.drawMatches(self.pedestrian1_image, self.pedestrian1_image_kp, gray_frame, kp_image, good_matches1, homography, **draw_params)
-            self.twist_msg.linear.x = 0
-            self.twist_msg.angular.z = 0
-            print("num matches: " + str(len(good_matches1)))
-            cv2.imshow("Image", img_4)
-            cv2.waitKey(3)
-
-        #elif len(good_matches2) > 10:
-         #   src_pts = np.float32([ self.pedestrian2_image_kp[m.queryIdx].pt for m in good_matches2 ]).reshape(-1,1,2)
-          # dst_pts = np.float32([ kp_image[m.trainIdx].pt for m in good_matches2 ]).reshape(-1,1,2)
-           # M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-            #matchesMask = mask.ravel().tolist()
-            #pts = np.float32([ [0,0],[0,240],[120,240],[120,0] ]).reshape(-1,1,2)
-            #dst = cv2.perspectiveTransform(pts,M)
-            #homography = cv2.polylines(gray_frame,[np.int32(dst)],True, 255, 3, cv2.LINE_AA)
-            #draw_params = dict(matchColor = 120, # draw matches in green color
-             #       singlePointColor = None,
-              #      matchesMask = matchesMask, # draw only inliers
-               #     flags = 2)
-            #img_4 = cv2.drawMatches(self.pedestrian2_image, self.pedestrian2_image_kp, gray_frame, kp_image, good_matches2, homography, **draw_params)
-            #self.twist_msg.linear.x = 0
-            #self.twist_msg.angular.z = 0
-            #print("Left pedestrian found")
-            #print("num matches: " + str(len(good_matches1)))
-            #cv2.imshow("Image", img_4)
-            #cv2.waitKey(3)
-
-        else:
-            #print( "Not enough matches are found: ")
-            #print("{}/{}".format(len(good_matches1), 7) )
-            #print("{}/{}".format(len(good_matches2), 7) )
-            matchesMask = None
 
 
 
