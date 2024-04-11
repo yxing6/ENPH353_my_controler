@@ -54,8 +54,9 @@ class Drive:
         self.blue_board = None
         self.white_board = None
         self.clue_detected = False
+        self.last_clueboard_time = time.time()
         # import the CNN text prediction model
-        model_dir = "/home/fizzer/ros_ws/src/my_controller/node/character_prediction_local_0411_2.h5"
+        model_dir = "/home/fizzer/ros_ws/src/my_controller/node/character_prediction_colab_0411.h5"
         self.model = tf.keras.models.load_model(model_dir)
 
         self.clue_type_dict = {
@@ -68,6 +69,7 @@ class Drive:
             'W': '7',
             'B': '8'
         }
+        self.number_list = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         self.clue_type_str = None
         self.clue_type_id = None
         self.clue_value_str = None
@@ -118,18 +120,22 @@ class Drive:
             clue_type_x0, clue_type_y0 = 250, 37
             clue_value_x0, clue_value_y0 = 30, 260
 
-            clue_type_prediction = self.parse_type(clue_type_x0, clue_type_y0)
-            print("The predicted clue type letter is: ", clue_type_prediction)
-            self.clue_type_str = ''.join(clue_type_prediction)
-            self.clue_type_id = self.clue_type_dict.get(self.clue_type_str)
+            if time.time() - self.last_clueboard_time > 3.0:
+                self.last_clueboard_time = time.time()
+                clue_type_prediction = self.parse_type(clue_type_x0, clue_type_y0)
+                print("The predicted clue type letter is: ", clue_type_prediction)
+                self.clue_type_str = ''.join(clue_type_prediction)
+                self.clue_type_id = self.clue_type_dict.get(self.clue_type_str)
 
-            clue_value_prediction = self.parse_value(clue_value_x0, clue_value_y0)
-            print("clue_value_prediction: ", clue_value_prediction)
-            self.clue_value_str = ''.join(clue_value_prediction)
+                # self.number_list.index(self.clue_type_id) += 1
 
-            self.clue_detected = True
-            self.blue_board_detected = False
-            self.white_board_detected = False
+                clue_value_prediction = self.parse_value(clue_value_x0, clue_value_y0)
+                print("clue_value_prediction: ", clue_value_prediction)
+                self.clue_value_str = ''.join(clue_value_prediction)
+
+                self.clue_detected = True
+                self.blue_board_detected = False
+                self.white_board_detected = False
 
         if self.end_not_sent and not self.start_not_sent:
             self.calculate_speed(self.camera_image)
@@ -407,7 +413,7 @@ class Drive:
                 self.twist_msg.angular.z += 0.062
             self.Kp = 0.042
         else:
-            self.twist_msg.linear.x = self.linear_val_max
+            self.twist_msg.linear.x = self.linear_val_max - 0.1
 
         if abs(angular_error) > self.error_threshold and not (self.driving_state == 6 or self.driving_state == 2):
             self.twist_msg.linear.x = self.linear_val_min
@@ -508,7 +514,7 @@ class Drive:
             self.start_not_sent = False
 
         if self.clue_detected:
-            print(f"Sending clue type for {self.clue_value_str}")
+            print(f"Sending clue type for {self.clue_type_id}")
             self.score_track_pub.publish(reward_message)
             self.clue_detected = False
 
