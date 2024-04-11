@@ -411,13 +411,11 @@ class Drive:
 
         start_msg = 0
         stop_msg = -1
-        string_message = '14,password,{0},NA'
-
         start_message = f"14,password,{start_msg},start"
         stop_message = f"14,password,{stop_msg},stop"
         reward_message = f"14,password,{self.clue_type_id}, {self.clue_value_str}"
 
-        duration = 400
+        duration = 240
         sim_time = data.clock.secs
 
         if self.start_not_sent:
@@ -489,8 +487,6 @@ class Drive:
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
                 if w > 225 and h > 125 and 1.0 < w / h < 2.0:
-                    # # save the raw clue board
-                    # clue_board_raw = roi[y:y + h, x:x + w]
 
                     # Properly separate four corners and
                     # perform perspective transform this blue board into a rectangle shape
@@ -527,7 +523,6 @@ class Drive:
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
                 if w > 500 and h > 300 and 1.0 < w / h < 2.0:
-                    # print("This is a white board, with weight and height:", w, h)
 
                     # Properly separate four corners and
                     # perform perspective transform this white board into a rectangle shape
@@ -567,7 +562,7 @@ class Drive:
         clue_type_img_raw = self.white_board[clue_type_y0:clue_type_y0 + letter_height,
                             clue_type_x0:clue_type_x0 + letter_width]
         clue_type_img = self.char_image_format(clue_type_img_raw)
-        img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/raw/{self.raw}.jpg"
+        # img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/raw/{self.raw}.jpg"
 
         clue_type_predict = self.predict_clue([clue_type_img])
 
@@ -588,7 +583,7 @@ class Drive:
             clue_char_img_raw = self.white_board[y_start:y_start + letter_height, x_start:x_start + letter_width]
             clue_char_img = self.char_image_format(clue_char_img_raw)
             clue_value_img_list.append(clue_char_img)
-            img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/raw/{self.raw}.jpg"
+            # img_des = f"/home/fizzer/PycharmProjects/character_cnn/image/my_controller_image/raw/{self.raw}.jpg"
 
         clue_value_predict = self.predict_clue(clue_value_img_list)
 
@@ -610,7 +605,6 @@ class Drive:
             try:
                 min_pixel_value = img.min()
                 if min_pixel_value == 0:
-                    # img_reshape = cv2.resize(img, (100, 140), interpolation=cv2.INTER_LINEAR)
                     # img_aug = np.expand_dims(img_reshape / 255.0, axis=0)
                     img_reshape = cv2.resize(img, (60, 120), interpolation=cv2.INTER_LINEAR)
                     img_aug = np.expand_dims(img_reshape, axis=0)
