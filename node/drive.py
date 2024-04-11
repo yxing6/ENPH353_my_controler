@@ -56,7 +56,7 @@ class Drive:
         self.clue_detected = False
         self.last_clueboard_time = time.time()
         # import the CNN text prediction model
-        model_dir = "/home/fizzer/ros_ws/src/my_controller/node/character_prediction_colab_0411.h5"
+        model_dir = "/home/fizzer/ros_ws/src/my_controller/node/character_prediction_colab_0411_cam_view.h5"
         self.model = tf.keras.models.load_model(model_dir)
 
         self.clue_type_dict = {
@@ -692,11 +692,12 @@ class Drive:
         y_predicts = list()
         for img in images:
             try:
-                min_pixel_value = img.min()
+                min_pixel_value = img[:, 15:30].min()
                 if min_pixel_value == 0:
-                    # img_aug = np.expand_dims(img_reshape / 255.0, axis=0)
-                    img_reshape = cv2.resize(img, (60, 120), interpolation=cv2.INTER_LINEAR)
-                    img_aug = np.expand_dims(img_reshape, axis=0)
+                    img_aug = np.expand_dims(img, axis=0)
+                    img_aug = np.asarray(img_aug)
+                    # img_res.hape = cv2.resize(img, (60, 120), interpolation=cv2.INTER_LINEAR)
+                    # img_aug = np.expand_dims(img_aug, axis=0)
                     y_p = self.model.predict(img_aug)[0]
                     y_predicts.append(self.int_to_char(np.argmax(y_p)))
                 else:
