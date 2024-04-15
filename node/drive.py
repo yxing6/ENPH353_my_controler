@@ -120,17 +120,17 @@ class Drive:
             clue_type_x0, clue_type_y0 = 250, 37
             clue_value_x0, clue_value_y0 = 30, 260
 
-            if time.time() - self.last_clueboard_time > 3.0:
+            if time.time() - self.last_clueboard_time > 0.1:
                 self.last_clueboard_time = time.time()
                 clue_type_prediction = self.parse_type(clue_type_x0, clue_type_y0)
-                print("The predicted clue type letter is: ", clue_type_prediction)
+                # print("The predicted clue type letter is: ", clue_type_prediction)
                 self.clue_type_str = ''.join(clue_type_prediction)
                 self.clue_type_id = self.clue_type_dict.get(self.clue_type_str)
 
                 # self.number_list.index(self.clue_type_id) += 1
 
                 clue_value_prediction = self.parse_value(clue_value_x0, clue_value_y0)
-                print("clue_value_prediction: ", clue_value_prediction)
+                # print("clue_value_prediction: ", clue_value_prediction)
                 self.clue_value_str = ''.join(clue_value_prediction)
 
                 self.clue_detected = True
@@ -169,7 +169,7 @@ class Drive:
             gray = cv2.cvtColor(img[717:719, :, :], cv2.COLOR_BGR2GRAY)
 
             if self.driving_state == 4:
-                print("Time: " + str(int(time.time() - self.state_trans_start_time)))
+                # print("Time: " + str(int(time.time() - self.state_trans_start_time)))
                 self.count_purples(hsv)
 
             else:
@@ -227,8 +227,8 @@ class Drive:
             last_row = binary[-1, :]
             # print(last_row)
         elif self.driving_state == 5 or self.driving_state == 7:
-            filtered_img = cv2.cvtColor(cv2.medianBlur(img[630:719, :, :], 71), cv2.COLOR_BGR2HSV)
-            filtered_img = cv2.cvtColor(cv2.GaussianBlur(filtered_img, (41, 41), 0), cv2.COLOR_BGR2HSV)
+            filtered_img = cv2.cvtColor(cv2.medianBlur(img[630:719, :, :], 33), cv2.COLOR_BGR2HSV)
+            filtered_img = cv2.cvtColor(cv2.GaussianBlur(filtered_img, (9, 9), 0), cv2.COLOR_BGR2HSV)
             # filtered_img = cv2.cvtColor(cv2.bilateralFilter(filtered_img, 13, 63, 47), cv2.COLOR_BGR2HSV)
 
             self.count_purples(hsv)
@@ -380,7 +380,7 @@ class Drive:
         elif self.driving_state == 2:
             self.twist_msg.linear.x = self.linear_val_max + 0.14
         elif self.driving_state == 4:
-            self.twist_msg.linear.x = self.linear_val_max - 0.06
+            self.twist_msg.linear.x = self.linear_val_max - 0.02
             if int(current_time - self.state_trans_start_time) > 11:
                 self.twist_msg.angular.z += 0.25
                 if int(current_time - self.state_trans_start_time) > 13:
@@ -451,7 +451,7 @@ class Drive:
 
         if purpleCount > 340 or (self.driving_state == 6 and purpleCount > 200):
             self.on_purple = 1
-            print("Detected purple!: " + str(purpleCount))
+            # print("Detected purple!: " + str(purpleCount))
         elif self.on_purple == 1:
             if (
                     self.driving_state == 4 or self.driving_state == 5) and time.time() - self.state_trans_start_time > 10.0:
@@ -575,7 +575,7 @@ class Drive:
 
                 # I am only interested in the clue board when I am close by,
                 # and it is a clue board only when x dim > y dim
-                if w > 225 and h > 125 and 1.0 < w / h < 2.0:
+                if w > 250 and h > 150 and 1.0 < w / h < 2.0:
 
                     # Properly separate four corners and
                     # perform perspective transform this blue board into a rectangle shape
@@ -622,8 +622,8 @@ class Drive:
                     # Compute the perspective transform matrix and apply the perspective transformation
                     matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
                     self.white_board = cv2.warpPerspective(self.blue_board, matrix, (width, height))
-                    # cv2.imshow('A white Board', self.white_board)
-                    # cv2.waitKey(1)
+                    cv2.imshow('A white Board', self.white_board)
+                    cv2.waitKey(1)
 
                     self.white_board_detected = True
 
