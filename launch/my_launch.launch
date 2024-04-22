@@ -1,5 +1,5 @@
 <launch>
-  <!-- enph353_ros_lab -->
+  <!-- my_controller -->
   <node pkg="my_controller"
     type="drive.py"
     name="drive" 
